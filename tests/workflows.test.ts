@@ -82,6 +82,25 @@ test("build workflows retain portable install, typecheck and test gates", () => 
   }
 });
 
+test("Intel macOS installs the pinned JavaScript pnpm CLI without a native bootstrap", () => {
+  const release = workflow("desktop-release");
+  const metadata = JSON.parse(readFileSync("package.json", "utf8"));
+  const fallback = release.jobs.build.steps.find(
+    (step: { name?: string }) =>
+      step.name === "Install pinned pnpm on Intel macOS",
+  );
+  assert.equal(fallback.if, "runner.os == 'macOS' && runner.arch == 'X64'");
+  assert.equal(fallback.run, `npm install --global ${metadata.packageManager}`);
+  const setup = release.jobs.build.steps.find((step: { uses?: string }) =>
+    step.uses?.startsWith("pnpm/action-setup@"),
+  );
+  assert.equal(setup.if, "runner.os != 'macOS' || runner.arch != 'X64'");
+  const nodeIndex = release.jobs.build.steps.findIndex(
+    (step: { uses?: string }) => step.uses?.startsWith("actions/setup-node@"),
+  );
+  assert.ok(nodeIndex < release.jobs.build.steps.indexOf(fallback));
+});
+
 test("desktop release titles use the packaged commit, including existing releases", () => {
   const release = workflow("desktop-release");
   assert.equal(
