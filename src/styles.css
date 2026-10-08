@@ -580,6 +580,35 @@ th .viewer-icon-button {
 .viewer-chart-toolbar {
   flex: none;
 }
+.viewer-loading-region {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.viewer-loading-fallback {
+  position: relative;
+  height: 100%;
+  flex: 1;
+}
+.viewer-loading-indicator {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 900;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--viewer-border);
+  border-radius: 50%;
+  background: var(--viewer-popup);
+  color: var(--viewer-accent);
+  box-shadow: var(--viewer-shadow);
+  pointer-events: none;
+}
 .viewer-chart-plots {
   flex: 1;
   min-height: 0;

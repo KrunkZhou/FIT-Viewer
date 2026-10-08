@@ -17,7 +17,7 @@ import {
 } from "react-leaflet";
 import type { MapData, MapPoint, ExportQuery, Position } from "../model";
 import type { DocumentClient } from "../document/client";
-import { IconButton, Toggle } from "./controls";
+import { IconButton, LoadingIndicator, Toggle } from "./controls";
 import { FIT_EPOCH } from "../protocol/time";
 import { pointDetails, routeDetails } from "./map-details";
 import "leaflet/dist/leaflet.css";
@@ -65,6 +65,15 @@ export default function ActivityMap({
 }) {
   const [data, setData] = useState<MapData>();
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadingTiles, setLoadingTiles] = useState(false);
+  const tileEvents = useMemo(
+    () => ({
+      loading: () => setLoadingTiles(true),
+      load: () => setLoadingTiles(false),
+    }),
+    [],
+  );
   const [legend, setLegend] = useState(false);
   const [satellite, setSatellite] = useState(false);
   const [selected, setSelected] = useState<Position>();
@@ -101,13 +110,19 @@ export default function ActivityMap({
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
   useEffect(() => {
     const controller = new AbortController();
+    setLoading(true);
+    setError("");
     client
       .request<MapData>({ kind: "map" }, controller.signal)
       .then((next) => {
         if (!controller.signal.aborted) setData(next);
       })
       .catch((error) => {
-        if (error.name !== "AbortError") setError(error.message);
+        if (!controller.signal.aborted && error.name !== "AbortError")
+          setError(error.message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
   }, [client]);
@@ -163,7 +178,12 @@ export default function ActivityMap({
         </p>
       )}
       <div className="viewer-map-workspace">
-        <div className="viewer-map-canvas">
+        <div className="viewer-map-canvas" aria-busy={loading || loadingTiles}>
+          {(loading || loadingTiles) && (
+            <LoadingIndicator
+              label={loading ? "Loading map data" : "Loading map tiles"}
+            />
+          )}
           <div className="viewer-map-tools">
             {satelliteUrl && (
               <label>
@@ -218,6 +238,7 @@ export default function ActivityMap({
                 url={satellite && satelliteUrl ? satelliteUrl : streetUrl}
                 attribution={attribution}
                 maxZoom={19}
+                eventHandlers={tileEvents}
               />
               <Bounds data={visible} />
               {data.tracks.map(

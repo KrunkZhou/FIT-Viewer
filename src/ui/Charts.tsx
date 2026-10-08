@@ -20,7 +20,12 @@ import {
 } from "recharts";
 import type { ChartData, ChartPoint, ExportQuery, Sensor } from "../model";
 import type { DocumentClient } from "../document/client";
-import { IconButton, readPreference, savePreference } from "./controls";
+import {
+  IconButton,
+  LoadingIndicator,
+  readPreference,
+  savePreference,
+} from "./controls";
 import { chartMemberKeys, groupSensors } from "./chart-groups";
 
 const COLORS = [
@@ -206,7 +211,7 @@ export default function Charts({
   const [reference, setReference] = useState("");
   const [width, setWidth] = useState(640);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const content = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
   const groups = useMemo(
@@ -226,6 +231,7 @@ export default function Charts({
     if (!active) return;
     const controller = new AbortController();
     setLoading(true);
+    setError("");
     const chosen = groupRef.current.filter((group) =>
       selected.includes(group.sensor.key),
     );
@@ -282,7 +288,8 @@ export default function Charts({
           setSelected(keep);
       })
       .catch((error) => {
-        if (error.name !== "AbortError") setError(error.message);
+        if (!controller.signal.aborted && error.name !== "AbortError")
+          setError(error.message);
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -443,38 +450,41 @@ export default function Charts({
             {error}
           </p>
         )}
-        <div className="viewer-chart-plots">
-          {groups
-            .filter((group) => selected.includes(group.sensor.key))
-            .map((group) => {
-              const sensor = group.sensor;
-              const traces = group.members.map((member) => ({
-                sensor: member,
-                points: data?.series[member.key] ?? [],
-                color: sensorColor(member.key),
-              }));
-              const points =
-                traces.length > 1
-                  ? traces
-                      .flatMap((trace) => trace.points)
-                      .sort((a, b) => a.time - b.time)
-                  : traces[0].points;
-              return (
-                <Plot
-                  active={active}
-                  sensor={sensor}
-                  points={points}
-                  traces={traces}
-                  color={sensorColor(sensor.key)}
-                  references={references}
-                  onZoom={(start, end) => setRange({ start, end })}
-                  key={sensor.key}
-                />
-              );
-            })}
-          {!selected.length && (
-            <p className="viewer-muted empty-table">No sensors selected.</p>
-          )}
+        <div className="viewer-loading-region">
+          {loading && <LoadingIndicator label="Loading chart data" />}
+          <div className="viewer-chart-plots">
+            {groups
+              .filter((group) => selected.includes(group.sensor.key))
+              .map((group) => {
+                const sensor = group.sensor;
+                const traces = group.members.map((member) => ({
+                  sensor: member,
+                  points: data?.series[member.key] ?? [],
+                  color: sensorColor(member.key),
+                }));
+                const points =
+                  traces.length > 1
+                    ? traces
+                        .flatMap((trace) => trace.points)
+                        .sort((a, b) => a.time - b.time)
+                    : traces[0].points;
+                return (
+                  <Plot
+                    active={active}
+                    sensor={sensor}
+                    points={points}
+                    traces={traces}
+                    color={sensorColor(sensor.key)}
+                    references={references}
+                    onZoom={(start, end) => setRange({ start, end })}
+                    key={sensor.key}
+                  />
+                );
+              })}
+            {!loading && !error && !selected.length && (
+              <p className="viewer-muted empty-table">No sensors selected.</p>
+            )}
+          </div>
         </div>
       </div>
     </div>

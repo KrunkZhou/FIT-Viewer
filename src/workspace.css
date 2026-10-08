@@ -81,7 +81,6 @@ body { margin: 0; overflow: hidden; }
 .viewer-file-details > div { display: grid; grid-template-columns: 125px minmax(0, 1fr); gap: 12px; border-bottom: 1px solid var(--viewer-border-soft); padding: 14px 0; font-size: 14px; }
 .viewer-file-details dt { color: var(--viewer-muted); }
 .viewer-file-details dd { overflow-wrap: anywhere; }
-.viewer-loading { padding: 40px 16px; color: var(--viewer-muted); font-size: 14px; text-align: center; }
 .viewer-progress { flex: none; min-height: 32px; height: auto; }
 .viewer-messages { position: relative; flex: 1; min-height: 0; }
 .message-tabs { display: grid; grid-template-columns: 205px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: 100%; min-height: 0; }

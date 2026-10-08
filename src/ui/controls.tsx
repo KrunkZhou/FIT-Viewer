@@ -5,8 +5,16 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { X } from "lucide-react";
+import { LoaderCircle, X } from "lucide-react";
 import * as Switch from "@radix-ui/react-switch";
+
+export function LoadingIndicator({ label }: { label: string }) {
+  return (
+    <div className="viewer-loading-indicator" role="status" aria-label={label}>
+      <LoaderCircle className="spin" size={28} aria-hidden="true" />
+    </div>
+  );
+}
 
 export function IconButton({
   title,

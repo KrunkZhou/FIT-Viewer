@@ -32,6 +32,7 @@ import { Messages } from "./ui/Messages";
 import { Diagnostics } from "./ui/Diagnostics";
 import {
   IconButton,
+  LoadingIndicator,
   Modal,
   navigateTabs,
   readPreference,
@@ -550,7 +551,15 @@ export default function App() {
               data-tab-id={summary ? tab : undefined}
               className="viewer-tab-panel"
             >
-              <Suspense fallback={<p className="viewer-loading">Loading...</p>}>
+              <Suspense
+                fallback={
+                  <div className="viewer-loading-fallback">
+                    <LoadingIndicator
+                      label={tab === "map" ? "Loading map" : "Loading charts"}
+                    />
+                  </div>
+                }
+              >
                 {content}
               </Suspense>
             </section>
