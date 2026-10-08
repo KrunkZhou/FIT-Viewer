@@ -38,3 +38,15 @@ The portable build does not register associations or prompt. Double-clicked file
 open in the existing app window, or are queued until a new window is ready.
 
 Icons are checked in for web, Windows and macOS; see [icon generation](build/ICON.md).
+
+## Versions
+
+Desktop push builds publish regular GitHub releases named and tagged with their
+version (for example, `v0.0.42` for workflow run 42). Rerunning the same workflow
+keeps that version; an existing tag must point to the same commit. A manual or
+tag-triggered release can use an existing stable `vMAJOR.MINOR.PATCH` tag.
+Prerelease suffixes are rejected. Existing historical releases are not renamed.
+
+The top-left app icon opens the build version and project GitHub link. The version
+is embedded at build time from `RELEASE_VERSION`, falling back to `package.json`
+for local and web builds. Desktop packaging uses the same `RELEASE_VERSION`.

@@ -9,6 +9,7 @@ test("empty app keeps file controls without section tabs or orphaned tab panels"
   assert.ok(markup.includes("No file selected"));
   assert.ok(markup.includes("Open FIT file"));
   assert.ok(markup.includes("Developer"));
+  assert.ok(markup.includes('aria-label="App information"'));
   assert.ok(markup.includes("viewer-empty"));
   assert.ok(!markup.includes('role="tablist"'));
   assert.ok(!markup.includes('role="tabpanel"'));

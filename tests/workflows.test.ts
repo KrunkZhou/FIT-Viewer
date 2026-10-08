@@ -126,7 +126,7 @@ test("Intel macOS installs the pinned JavaScript pnpm CLI without a native boots
   assert.ok(nodeIndex < release.jobs.build.steps.indexOf(fallback));
 });
 
-test("desktop release titles use the packaged commit, including existing releases", () => {
+test("desktop release titles use the packaged version and clear prerelease status on reruns", () => {
   const release = workflow("desktop-release");
   assert.equal(
     release.jobs.validate.outputs.commit,
@@ -139,13 +139,17 @@ test("desktop release titles use the packaged commit, including existing release
     publish.env.RELEASE_COMMIT,
     "${{ needs.validate.outputs.commit }}",
   );
-  assert.ok(publish.run.includes('--title "$RELEASE_COMMIT" "${options[@]}"'));
+  assert.equal(
+    publish.env.RELEASE_VERSION,
+    "${{ needs.validate.outputs.version }}",
+  );
+  assert.ok(publish.run.includes('--title "$RELEASE_TAG" --prerelease=false'));
   assert.ok(
     publish.run.includes(
-      'gh release edit "$RELEASE_TAG" --title "$RELEASE_COMMIT" --draft=false',
+      'gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --draft=false --prerelease=false',
     ),
   );
-  assert.ok(!publish.run.includes('--title "FIT Viewer $RELEASE_TAG"'));
+  assert.ok(!publish.run.includes('--title "$RELEASE_COMMIT"'));
 });
 
 test("desktop releases accept branch pushes and manual runs without requiring tags", () => {
@@ -175,15 +179,15 @@ test("desktop releases accept branch pushes and manual runs without requiring ta
     (step: { name?: string }) => step.name === "Publish GitHub Release",
   );
   assert.ok(publish.run.includes('--target "$RELEASE_COMMIT"'));
-  assert.ok(publish.run.includes('if [[ "$RELEASE_TAG" == commit-* ]]'));
+  assert.ok(publish.run.includes('test "$RELEASE_TAG" = "v$RELEASE_VERSION"'));
   assert.ok(publish.run.includes('--verify-tag --target "$RELEASE_COMMIT"'));
-  assert.ok(publish.run.includes("options+=(--prerelease --latest=false)"));
+  assert.ok(!publish.run.includes("--latest=false"));
   assert.ok(
     publish.run.includes('gh api "repos/$GH_REPO/commits/$RELEASE_TAG"'),
   );
 });
 
-test("publishing creates exact commit tags, supports reruns, and rejects mismatched tags before uploads", () => {
+test("publishing creates version tags at the exact commit, supports reruns, and rejects mismatches before uploads", () => {
   const directory = mkdtempSync(join(tmpdir(), "fitviewer-publish-"));
   const commit = "0123456789abcdef0123456789abcdef01234567";
   try {
@@ -230,8 +234,10 @@ if (args[0] === "api") {
     if (!state.tag || !args.includes("--verify-tag"))
       throw new Error("Draft releases must use an existing tag");
     state.release = true;
+    state.prerelease = !args.includes("--prerelease=false");
   } else if (args[1] === "upload" || args[1] === "edit") {
     if (!state.release) throw new Error("No release for upload/edit");
+    if (args[1] === "edit") state.prerelease = !args.includes("--prerelease=false");
   } else throw new Error("Unexpected release command");
 } else throw new Error("Unexpected gh command");
 writeFileSync(stateFile, JSON.stringify(state));
@@ -244,16 +250,17 @@ writeFileSync(stateFile, JSON.stringify(state));
     const stateFile = join(directory, "state.json");
     const log = join(directory, "commands.jsonl");
     for (const scenario of [
-      { tag: `commit-${commit}`, exists: false, release: false, matches: true },
-      { tag: `commit-${commit}`, exists: true, release: true, matches: true },
+      { tag: "v0.0.42", exists: false, release: false, matches: true },
+      { tag: "v0.0.42", exists: true, release: true, matches: true },
       { tag: "v1.2.3", exists: true, release: false, matches: true },
-      { tag: `commit-${commit}`, exists: true, release: true, matches: false },
+      { tag: "v0.0.42", exists: true, release: true, matches: false },
     ]) {
       writeFileSync(
         stateFile,
         JSON.stringify({
           tag: scenario.exists,
           release: scenario.release,
+          prerelease: scenario.release,
           sha: scenario.matches ? commit : "f".repeat(40),
         }),
       );
@@ -268,7 +275,7 @@ writeFileSync(stateFile, JSON.stringify(state));
             GH_REPO: "test/repository",
             RELEASE_TAG: scenario.tag,
             RELEASE_COMMIT: commit,
-            PRERELEASE: String(scenario.tag.startsWith("commit-")),
+            RELEASE_VERSION: scenario.tag.slice(1),
             GH_STUB_STATE: stateFile,
             GH_STUB_LOG: log,
           },
@@ -294,12 +301,9 @@ writeFileSync(stateFile, JSON.stringify(state));
         );
         assert.equal(
           createsRelease[createsRelease.indexOf("--title") + 1],
-          commit,
+          scenario.tag,
         );
-        assert.equal(
-          createsRelease.includes("--prerelease"),
-          scenario.tag.startsWith("commit-"),
-        );
+        assert.equal(createsRelease.includes("--prerelease=false"), true);
       }
       assert.equal(
         commands.some((args) => args[1] === "upload"),
@@ -313,6 +317,11 @@ writeFileSync(stateFile, JSON.stringify(state));
         commands.some((args) => args[1] === "edit"),
         scenario.matches,
       );
+      if (scenario.matches)
+        assert.equal(
+          JSON.parse(readFileSync(stateFile, "utf8")).prerelease,
+          false,
+        );
       if (createsTag) {
         const state = JSON.parse(readFileSync(stateFile, "utf8"));
         assert.equal(state.sha, commit);
@@ -324,7 +333,7 @@ writeFileSync(stateFile, JSON.stringify(state));
   }
 });
 
-test("untagged releases derive unique tags and native-safe versions from their commit and run", () => {
+test("untagged releases derive stable version tags and native-safe versions from their run", () => {
   const directory = mkdtempSync(join(tmpdir(), "fitviewer-commit-release-"));
   const commit = "0123456789abcdef0123456789abcdef01234567";
   try {
@@ -341,14 +350,14 @@ test("untagged releases derive unique tags and native-safe versions from their c
         encoding: "utf8",
         stdio: "pipe",
       });
-    const expected = `tag=commit-${commit}\nversion=0.0.42\nprerelease=true\n`;
+    const expected = "tag=v0.0.42\nversion=0.0.42\n";
     assert.equal(run(commit, "42"), expected);
     assert.equal(run(commit, "42"), expected);
     assert.ok(readFileSync(output, "utf8").includes(expected));
     assert.match(run(commit, "65536"), /version=0\.1\.0\n/);
     assert.match(run(commit, "4294967295"), /version=0\.65535\.65535\n/);
     const otherCommit = "abcdef0123456789abcdef0123456789abcdef01";
-    assert.ok(run(otherCommit, "42").includes(`tag=commit-${otherCommit}\n`));
+    assert.ok(run(otherCommit, "43").includes("tag=v0.0.43\n"));
     for (const sha of ["", "abc123", "A".repeat(40), commit + "\ntag=bad"])
       assert.throws(() => run(sha, "42"), sha);
     for (const runNumber of [
@@ -367,14 +376,11 @@ test("untagged releases derive unique tags and native-safe versions from their c
   }
 });
 
-test("release versions come from validated semantic version tags, including prereleases", () => {
+test("explicit release tags must be stable, native-safe semantic versions", () => {
   const directory = mkdtempSync(join(tmpdir(), "fitviewer-version-"));
   try {
     const output = join(directory, "outputs");
-    for (const [tag, prerelease] of [
-      ["v1.2.3", "false"],
-      ["v2.0.0-beta.1", "true"],
-    ]) {
+    for (const tag of ["v1.2.3", "v2.0.0"]) {
       const result = execFileSync(
         process.execPath,
         ["scripts/release-version.mjs"],
@@ -384,7 +390,7 @@ test("release versions come from validated semantic version tags, including prer
         },
       );
       assert.ok(result.includes(`version=${tag.slice(1)}\n`));
-      assert.ok(result.includes(`prerelease=${prerelease}\n`));
+      assert.ok(!result.includes("prerelease="));
     }
     assert.ok(readFileSync(output, "utf8").includes("tag=v1.2.3\n"));
     for (const tag of [
@@ -393,6 +399,8 @@ test("release versions come from validated semantic version tags, including prer
       "v01.2.3",
       "v1.2",
       "v1.2.3+build",
+      "v2.0.0-beta.1",
+      "v65536.1.2",
       "v1.2.3\nversion=bad",
       "v1.2.3;echo bad",
     ])

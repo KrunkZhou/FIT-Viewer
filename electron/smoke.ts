@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { app, type BrowserWindow } from "electron";
 import { createWindow, registerBundle } from "./app";
 import { activity } from "../tests/fixtures";
-import { checkDesktopSelection, checkRenderer } from "./smoke-renderer";
+import {
+  checkAppInformation,
+  checkDesktopSelection,
+  checkRenderer,
+} from "./smoke-renderer";
 import { OpenFiles } from "./open-files";
 
 const profile = resolve(".cache/electron-smoke-profile");
@@ -38,6 +42,10 @@ app
     const initial = await window.webContents.executeJavaScript(
       `(${checkDesktopSelection.toString()})("2 files", 2)`,
     );
+    const metadata = JSON.parse(await readFile("desktop/package.json", "utf8"));
+    const info = await window.webContents.executeJavaScript(
+      `(${checkAppInformation.toString()})(${JSON.stringify(metadata.version)})`,
+    );
     await window.webContents.executeJavaScript(
       `(${checkRenderer.toString()})()`,
     );
@@ -60,7 +68,7 @@ app
     const image = await window.webContents.capturePage();
     await writeFile(".cache/electron-smoke.png", image.toPNG());
     console.log(
-      `Desktop smoke passed: ${JSON.stringify({ ...result, initial, replacement })}`,
+      `Desktop smoke passed: ${JSON.stringify({ ...result, initial, replacement, info })}`,
     );
     clearTimeout(timeout);
     window.destroy();

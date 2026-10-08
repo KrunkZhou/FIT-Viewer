@@ -88,3 +88,34 @@ export async function checkDesktopSelection(name: string, sources: number) {
     throw new Error("Desktop icon is unavailable");
   return { name, sources, folderPicker: true, icon: true };
 }
+
+export async function checkAppInformation(version: string) {
+  const trigger = document.querySelector<HTMLButtonElement>(
+    '[aria-label="App information"]',
+  );
+  if (!trigger) throw new Error("App icon button missing");
+  const icon = trigger.querySelector("img");
+  if (!icon?.naturalWidth) throw new Error("App icon did not load");
+  trigger.click();
+  const deadline = performance.now() + 5000;
+  while (
+    document.querySelector(".viewer-app-version")?.textContent !==
+    `Version ${version}`
+  ) {
+    if (performance.now() > deadline)
+      throw new Error(
+        `App information did not show packaged version ${version}`,
+      );
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  const link = document.querySelector<HTMLAnchorElement>(".viewer-app-github");
+  if (
+    link?.href !== "https://github.com/KrunkZhou/FIT-Viewer" ||
+    link.rel !== "noopener noreferrer"
+  )
+    throw new Error("App information GitHub link is incorrect");
+  document
+    .querySelector<HTMLButtonElement>('[aria-label="Close app information"]')!
+    .click();
+  return { version, icon: true, github: link.href };
+}

@@ -12,7 +12,6 @@ import {
   AlertTriangle,
   ClipboardList,
   Download,
-  File,
   FolderOpen,
   LayoutDashboard,
   LoaderCircle,
@@ -23,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { DocumentClient } from "./document/client";
+import { AppInfo } from "./ui/AppInfo";
 import type { DocumentInput } from "./document/input";
 import { captureDrop, collectDrop } from "./ui/file-drop";
 import { Downloads } from "./ui/download";
@@ -392,7 +392,7 @@ export default function App() {
       <main className="viewer-main">
         <header className="viewer-file-bar">
           <div className="viewer-file">
-            <File size={18} />
+            <AppInfo />
             <h2>{summary?.filename ?? selectedName ?? "No file selected"}</h2>
             {workspace && workspace.sources.length > 1 && (
               <select

@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Optional existing version tag; leave blank to release the selected branch commit"
+        description: "Optional existing stable version tag (v1.2.3); leave blank for an automatic build version"
         required: false
         type: string
 
@@ -30,7 +30,6 @@ jobs:
     outputs:
       tag: ${{ steps.version.outputs.tag }}
       version: ${{ steps.version.outputs.version }}
-      prerelease: ${{ steps.version.outputs.prerelease }}
       commit: ${{ steps.commit.outputs.commit }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -141,23 +140,20 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.validate.outputs.tag }}
           RELEASE_COMMIT: ${{ needs.validate.outputs.commit }}
-          PRERELEASE: ${{ needs.validate.outputs.prerelease }}
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
         run: |
           cd release
           sha256sum ./*.exe ./*.dmg ./*.zip > SHA256SUMS.txt
-          if [[ "$RELEASE_TAG" == commit-* ]] && ! gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" --silent; then
+          test "$RELEASE_TAG" = "v$RELEASE_VERSION"
+          if ! gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" --silent; then
             gh api --method POST "repos/$GH_REPO/git/refs" \
               -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$RELEASE_COMMIT" --silent
           fi
           test "$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq '.sha')" = "$RELEASE_COMMIT"
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            options=()
-            if [ "$PRERELEASE" = "true" ]; then
-              options+=(--prerelease --latest=false)
-            fi
             gh release create "$RELEASE_TAG" --verify-tag --target "$RELEASE_COMMIT" --draft --generate-notes \
-              --title "$RELEASE_COMMIT" "${options[@]}" \
+              --title "$RELEASE_TAG" --prerelease=false \
               --notes "Windows installer and portable builds are unsigned; macOS builds are ad-hoc signed and not notarized."
           fi
           gh release upload "$RELEASE_TAG" ./*.exe ./*.dmg ./*.zip SHA256SUMS.txt --clobber
-          gh release edit "$RELEASE_TAG" --title "$RELEASE_COMMIT" --draft=false
+          gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --draft=false --prerelease=false

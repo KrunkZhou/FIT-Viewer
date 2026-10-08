@@ -1,16 +1,18 @@
 import { appendFile } from "node:fs/promises";
-import { valid, prerelease } from "semver";
+import { valid } from "semver";
 
 let tag = process.env.RELEASE_TAG || "";
 let version;
-let isPrerelease;
 if (tag) {
   version = tag.startsWith("v") ? tag.slice(1) : "";
-  if (valid(version) !== version || version.includes("+"))
+  if (
+    valid(version) !== version ||
+    !/^\d+\.\d+\.\d+$/.test(version) ||
+    version.split(".").some((part) => Number(part) > 65535)
+  )
     throw new Error(
-      "Release tag must be vMAJOR.MINOR.PATCH, optionally with a prerelease suffix; build metadata is not supported.",
+      "Release tag must be vMAJOR.MINOR.PATCH with components from 0 to 65535; prerelease suffixes and build metadata are not supported.",
     );
-  isPrerelease = prerelease(version) !== null;
 } else {
   const commit = process.env.RELEASE_COMMIT || "";
   const run = process.env.RELEASE_RUN_NUMBER || "";
@@ -23,10 +25,9 @@ if (tag) {
   const runNumber = Number(run);
   // Native Windows version components must fit in 16 bits.
   version = `0.${Math.floor(runNumber / 65536)}.${runNumber % 65536}`;
-  tag = `commit-${commit}`;
-  isPrerelease = true;
+  tag = `v${version}`;
 }
-const output = `tag=${tag}\nversion=${version}\nprerelease=${isPrerelease}\n`;
+const output = `tag=${tag}\nversion=${version}\n`;
 if (process.env.GITHUB_OUTPUT)
   await appendFile(process.env.GITHUB_OUTPUT, output);
 process.stdout.write(output);
