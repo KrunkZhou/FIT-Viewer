@@ -66,6 +66,7 @@ export interface FieldInfo {
   offset?: number;
   values?: Record<string, string>;
   bitmask?: boolean;
+  semicircles?: boolean;
 }
 export interface MessageInfo {
   id: number;

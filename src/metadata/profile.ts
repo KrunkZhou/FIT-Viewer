@@ -1,5 +1,6 @@
 import { Profile } from "@garmin/fitsdk";
 import watchReference from "./watch-settings.json";
+import { garminExtensions, garminValues } from "./garmin-extensions";
 import type {
   Cell,
   Definition,
@@ -26,7 +27,10 @@ export const words = (value: string): string =>
     .replace(/^./, (c) => c.toUpperCase());
 interface WatchField {
   fieldName: string;
+  type?: string;
   units?: string;
+  scale?: number;
+  offset?: number;
   description: string;
   values?: Record<string, string>;
   bitmask?: boolean;
@@ -152,7 +156,8 @@ export class Metadata {
       );
       const array =
         field.developer === undefined
-          ? Profile.messages[record.definition.message]?.fields[field.id]?.array
+          ? (Profile.messages[record.definition.message]?.fields[field.id]
+              ?.array ?? this.garminField(record, field)?.array)
           : this.developer(record, field)?.array;
       result[fieldKey(field)] =
         array && !Array.isArray(value) && typeof value !== "string"
@@ -215,6 +220,17 @@ export class Metadata {
   messageName(message: number): string {
     const official = Profile.messages[message];
     if (official) return words(official.name);
+    const extension = garminExtensions[message];
+    if (
+      extension &&
+      this.index.messages.get(message)?.some((id) => {
+        const record = this.index.records[id];
+        return record.definition.fields.some((f) =>
+          this.garminField(record, f),
+        );
+      })
+    )
+      return extension.name;
     const match = this.index.records.find(
       (r) =>
         r.definition.message === message &&
@@ -226,6 +242,23 @@ export class Metadata {
     return match && watch.messages[message]
       ? words(watch.messages[message].messageName)
       : `Message ${message}`;
+  }
+  private garminField(record: RecordRef, wire: WireField) {
+    if (
+      wire.developer !== undefined ||
+      this.index.subfiles[record.subfile].manufacturer !== 1
+    )
+      return;
+    const field = garminExtensions[record.definition.message]?.fields[wire.id];
+    return field &&
+      field.baseType === wire.type &&
+      (field.baseType === 7
+        ? wire.size > 0
+        : field.array
+          ? wire.size > 0 && wire.size % field.fieldSize === 0
+          : field.fieldSize === wire.size)
+      ? field
+      : undefined;
   }
   field(
     record: RecordRef,
@@ -257,7 +290,28 @@ export class Metadata {
     }
     const profile = Profile.messages[record.definition.message];
     const official = profile?.fields[wire.id];
-    const extra = this.watchField(record, wire, raw);
+    const supplemental = this.garminField(record, wire);
+    const variant = supplemental?.variants?.find((v) =>
+      v.when.some((condition) => {
+        const controller = record.definition.fields.find(
+          (f) => f.id === condition.id && f.developer === undefined,
+        );
+        return (
+          controller &&
+          (profile?.fields[controller.id] ||
+            this.garminField(record, controller)) &&
+          raw[String(controller.id)] === condition.value
+        );
+      }),
+    )?.field;
+    const watchInfo = this.watchField(record, wire, raw);
+    // A generic reference must not bypass stricter device-specific layout guards.
+    const guardedWatchField =
+      this.index.subfiles[record.subfile].product ===
+        watch.deviceModel.product &&
+      watch.messages[record.definition.message]?.fields[wire.id];
+    const extra =
+      watchInfo ?? (guardedWatchField ? undefined : (variant ?? supplemental));
     const active = official?.subFields.find((sub) =>
       sub.map.some((condition) => {
         const controller = Object.values(profile.fields).find(
@@ -267,8 +321,9 @@ export class Metadata {
       }),
     );
     const definition = active ?? official;
-    const type = definition?.type ?? TYPE_NAMES[wire.type] ?? "byte";
-    const cacheKey = `${key}:${definition?.name}:${Boolean(extra)}`;
+    const type =
+      definition?.type ?? extra?.type ?? TYPE_NAMES[wire.type] ?? "byte";
+    const cacheKey = `${key}:${definition?.name}:${extra?.fieldName}`;
     const existing = cache.get(cacheKey);
     if (existing) return existing;
     const result = {
@@ -280,9 +335,14 @@ export class Metadata {
         first(definition?.units, extra?.units ?? "") === "semicircles"
           ? "deg"
           : first(definition?.units, extra?.units ?? ""),
-      scale: first(definition?.scale, 1),
-      offset: first(definition?.offset, 0),
+      semicircles:
+        first(definition?.units, extra?.units ?? "") === "semicircles",
+      scale: definition ? first(definition.scale, 1) : (extra?.scale ?? 1),
+      offset: definition ? first(definition.offset, 0) : (extra?.offset ?? 0),
       values: {
+        ...(this.index.subfiles[record.subfile].manufacturer === 1
+          ? garminValues(type)
+          : {}),
         ...extra?.values,
         ...(type === "dateTime" || type === "localDateTime"
           ? {}
@@ -336,12 +396,7 @@ export class Metadata {
       }
       const label = info.values?.[String(value)];
       if (label) return words(label);
-      if (
-        info.units === "deg" &&
-        Profile.messages[record.definition.message]?.fields[wire.id]?.units ===
-          "semicircles"
-      )
-        return (value * 180) / 2147483648;
+      if (info.semicircles) return (value * 180) / 2147483648;
       return value / (info.scale || 1) - (info.offset ?? 0);
     };
     const value = Array.isArray(raw) ? raw.map(convert) : convert(raw);
