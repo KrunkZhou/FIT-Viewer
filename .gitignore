@@ -1,0 +1,10 @@
+node_modules/
+dist/
+desktop/
+release/
+.pnpm-store/
+.DS_Store
+.cache/
+test-results/
+playwright-report/
+/docs

@@ -1,0 +1,2818 @@
+{
+  "source": "WatchSettings.006-B4586-00.json",
+  "sha256": "837a60687f2957cc4b0e67bea876b87e42b116fdfcb2d3edf1813320b2e5f532",
+  "deviceModel": {
+    "description": "Instinct 3 - 45mm, AMOLED",
+    "partNumber": "006-B4586-00",
+    "manufacturer": 1,
+    "product": 4586
+  },
+  "messages": {
+    "2": {
+      "messageName": "device_settings",
+      "fields": {
+        "0": {
+          "fieldName": "active_time_zone",
+          "description": "DeviceSettings.ActiveTimeZone."
+        },
+        "1": {
+          "fieldName": "utc_offset",
+          "description": "DeviceSettings.UtcOffset."
+        },
+        "2": {
+          "fieldName": "time_offset",
+          "description": "DeviceSettings.TimeOffset; Units: s.",
+          "units": "s"
+        },
+        "3": {
+          "fieldName": "time_daylight_savings",
+          "description": "DeviceSettings.TimeDaylightSavings.",
+          "values": {
+            "0": "off",
+            "1": "on",
+            "2": "auto"
+          }
+        },
+        "4": {
+          "fieldName": "time_format",
+          "description": "Time format.",
+          "values": {
+            "0": "hour12",
+            "1": "hour24",
+            "2": "military",
+            "3": "hour12_with_seconds",
+            "4": "hour24_with_seconds",
+            "5": "utc"
+          }
+        },
+        "5": {
+          "fieldName": "time_zone_offset",
+          "description": "DeviceSettings.TimeZoneOffset; Units: hr.",
+          "units": "hr"
+        },
+        "10": {
+          "fieldName": "key_tones",
+          "description": "Key tones.",
+          "values": {
+            "0": "off",
+            "1": "tone",
+            "2": "vibrate",
+            "3": "tone_and_vibrate"
+          }
+        },
+        "11": {
+          "fieldName": "message_tones_enabled",
+          "description": "DeviceSettings.MessageTonesEnabled.",
+          "values": {
+            "0": "off",
+            "1": "tone",
+            "2": "vibrate",
+            "3": "tone_and_vibrate"
+          }
+        },
+        "12": {
+          "fieldName": "backlight_mode",
+          "description": "DeviceSettings.BacklightMode.",
+          "values": {
+            "0": "off",
+            "1": "manual",
+            "2": "key_and_messages",
+            "3": "auto_brightness",
+            "4": "smart_notifications",
+            "5": "key_and_messages_night",
+            "6": "key_and_messages_and_smart_notifications",
+            "7": "auto_interaction_gesture",
+            "8": "auto_interaction_only"
+          }
+        },
+        "13": {
+          "fieldName": "screen_timeout",
+          "description": "Seconds outside activities. The firmware may support fewer durations than the FIT encoding permits.",
+          "values": {
+            "0": "infinite"
+          }
+        },
+        "14": {
+          "fieldName": "screen_brightness",
+          "description": "Brightness percentage outside activities."
+        },
+        "15": {
+          "fieldName": "display_contrast",
+          "description": "DeviceSettings.DisplayContrast; Units: %.",
+          "units": "%"
+        },
+        "22": {
+          "fieldName": "weight_scale_enabled",
+          "description": "DeviceSettings.WeightScaleEnabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "26": {
+          "fieldName": "time_zone",
+          "description": "DeviceSettings.TimeZone.",
+          "values": {
+            "0": "almaty",
+            "1": "bangkok",
+            "2": "bombay",
+            "3": "brasilia",
+            "4": "cairo",
+            "5": "cape_verde_is",
+            "6": "darwin",
+            "7": "eniwetok",
+            "8": "fiji",
+            "9": "hong_kong",
+            "10": "islamabad",
+            "11": "kabul",
+            "12": "magadan",
+            "13": "mid_atlantic",
+            "14": "moscow",
+            "15": "muscat",
+            "16": "newfoundland",
+            "17": "samoa",
+            "18": "sydney",
+            "19": "tehran",
+            "20": "tokyo",
+            "21": "us_alaska",
+            "22": "us_atlantic",
+            "23": "us_central",
+            "24": "us_eastern",
+            "25": "us_hawaii",
+            "26": "us_mountain",
+            "27": "us_pacific",
+            "28": "other",
+            "29": "auckland",
+            "30": "kathmandu",
+            "31": "europe_western_wet",
+            "32": "europe_central_cet",
+            "33": "europe_eastern_eet",
+            "34": "jakarta",
+            "35": "perth",
+            "36": "adelaide",
+            "37": "brisbane",
+            "38": "tasmania",
+            "39": "iceland",
+            "40": "amsterdam",
+            "41": "athens",
+            "42": "barcelona",
+            "43": "berlin",
+            "44": "brussels",
+            "45": "budapest",
+            "46": "copenhagen",
+            "47": "dublin",
+            "48": "helsinki",
+            "49": "lisbon",
+            "50": "london",
+            "51": "madrid",
+            "52": "munich",
+            "53": "oslo",
+            "54": "paris",
+            "55": "prague",
+            "56": "reykjavik",
+            "57": "rome",
+            "58": "stockholm",
+            "59": "vienna",
+            "60": "warsaw",
+            "61": "zurich",
+            "62": "quebec",
+            "63": "ontario",
+            "64": "manitoba",
+            "65": "saskatchewan",
+            "66": "alberta",
+            "67": "british_columbia",
+            "68": "boise",
+            "69": "boston",
+            "70": "chicago",
+            "71": "dallas",
+            "72": "denver",
+            "73": "kansas_city",
+            "74": "las_vegas",
+            "75": "los_angeles",
+            "76": "miami",
+            "77": "minneapolis",
+            "78": "new_york",
+            "79": "new_orleans",
+            "80": "phoenix",
+            "81": "santa_fe",
+            "82": "seattle",
+            "83": "washington_dc",
+            "84": "us_arizona",
+            "85": "chita",
+            "86": "ekaterinburg",
+            "87": "irkutsk",
+            "88": "kaliningrad",
+            "89": "krasnoyarsk",
+            "90": "novosibirsk",
+            "91": "petropavlovsk_kamchatskiy",
+            "92": "samara",
+            "93": "vladivostok",
+            "94": "mexico_central",
+            "95": "mexico_mountain",
+            "96": "mexico_pacific",
+            "97": "cape_town",
+            "98": "winkhoek",
+            "99": "lagos",
+            "100": "riyahd",
+            "101": "venezuela",
+            "102": "australia_lh",
+            "103": "santiago",
+            "253": "manual",
+            "254": "automatic"
+          }
+        },
+        "35": {
+          "fieldName": "first_day_of_week",
+          "description": "First day of week.",
+          "values": {
+            "0": "sunday",
+            "1": "monday",
+            "2": "tuesday",
+            "3": "wednesday",
+            "4": "thursday",
+            "5": "friday",
+            "6": "saturday"
+          }
+        },
+        "36": {
+          "fieldName": "activity_tracking",
+          "description": "Activity tracking.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "37": {
+          "fieldName": "sleep_tracking",
+          "description": "Absent in the supplied snapshot; enable only when the watch exports this field.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "41": {
+          "fieldName": "recovery_advisor_enabled",
+          "description": "DeviceSettings.RecoveryAdvisorEnabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "42": {
+          "fieldName": "auto_max_hr_enabled",
+          "description": "DeviceSettings.AutoMaxHrEnabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "43": {
+          "fieldName": "clock_profile_color_enabled",
+          "description": "DeviceSettings.ClockProfileColorEnabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "45": {
+          "fieldName": "automatic_goal",
+          "description": "Automatic goal.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "46": {
+          "fieldName": "move_alert",
+          "description": "Move alert.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "47": {
+          "fieldName": "date_mode",
+          "description": "DeviceSettings.DateMode.",
+          "values": {
+            "0": "day_month",
+            "1": "month_day"
+          }
+        },
+        "48": {
+          "fieldName": "recording_interval",
+          "description": "Recording interval, Time means every seconds.",
+          "values": {
+            "0": "smart",
+            "1": "time",
+            "2": "distance"
+          }
+        },
+        "52": {
+          "fieldName": "course_navigation_enabled",
+          "description": "DeviceSettings.CourseNavigationEnabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "53": {
+          "fieldName": "course_off_course_warnings_enabled",
+          "description": "DeviceSettings.CourseOffCourseWarningsEnabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "56": {
+          "fieldName": "wrist",
+          "description": "Wrist placement.",
+          "values": {
+            "0": "right",
+            "1": "left"
+          }
+        },
+        "58": {
+          "fieldName": "autosync_min_steps",
+          "description": "DeviceSettings.AutosyncMinSteps; Units: steps.",
+          "units": "steps"
+        },
+        "59": {
+          "fieldName": "autosync_min_time",
+          "description": "DeviceSettings.AutosyncMinTime; Units: minutes.",
+          "units": "minutes"
+        },
+        "63": {
+          "fieldName": "display_pace",
+          "description": "DeviceSettings.DisplayPace.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "64": {
+          "fieldName": "display_activity_tracker_enabled",
+          "description": "DeviceSettings.DisplayActivityTrackerEnabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "65": {
+          "fieldName": "phone_notifications",
+          "description": "Phone notifications.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "66": {
+          "fieldName": "phone_notification_tone",
+          "description": "DeviceSettings.PhoneNotificationTone.",
+          "values": {
+            "0": "off",
+            "1": "tone",
+            "2": "vibrate",
+            "3": "tone_and_vibrate"
+          }
+        },
+        "67": {
+          "fieldName": "phone_notification_default_filter",
+          "description": "DeviceSettings.PhoneNotificationDefaultFilter.",
+          "values": {
+            "0": "show_none",
+            "1": "show_calls_only",
+            "2": "show_all",
+            "3": "show_calls_and_texts"
+          }
+        },
+        "68": {
+          "fieldName": "phone_notification_activity_filter",
+          "description": "DeviceSettings.PhoneNotificationActivityFilter.",
+          "values": {
+            "0": "show_none",
+            "1": "show_calls_only",
+            "2": "show_all",
+            "3": "show_calls_and_texts"
+          }
+        },
+        "69": {
+          "fieldName": "phone_notification_activity_tone",
+          "description": "DeviceSettings.PhoneNotificationActivityTone.",
+          "values": {
+            "0": "off",
+            "1": "tone",
+            "2": "vibrate",
+            "3": "tone_and_vibrate"
+          }
+        },
+        "75": {
+          "fieldName": "course_segments_enabled",
+          "description": "DeviceSettings.CourseSegmentsEnabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "80": {
+          "fieldName": "lactate_threshold_autodetect_enabled",
+          "description": "DeviceSettings.LactateThresholdAutodetectEnabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "81": {
+          "fieldName": "backlight_keys",
+          "description": "DeviceSettings.BacklightKeys.",
+          "values": {
+            "0": "off",
+            "1": "on",
+            "2": "after_sunset",
+            "3": "during_activity",
+            "4": "auto_interaction_gesture",
+            "5": "auto_interaction_only"
+          }
+        },
+        "82": {
+          "fieldName": "screen_alerts",
+          "description": "Screen alerts.",
+          "values": {
+            "0": "off",
+            "1": "on",
+            "2": "after_sunset",
+            "3": "during_activity",
+            "4": "auto_interaction_gesture",
+            "5": "auto_interaction_only"
+          }
+        },
+        "83": {
+          "fieldName": "screen_gesture",
+          "description": "Screen gesture.",
+          "values": {
+            "0": "off",
+            "1": "on",
+            "2": "after_sunset",
+            "3": "during_activity",
+            "4": "auto_interaction_gesture",
+            "5": "auto_interaction_only"
+          }
+        },
+        "84": {
+          "fieldName": "bluetooth_connection_alerts_enabled",
+          "description": "DeviceSettings.BluetoothConnectionAlertsEnabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "85": {
+          "fieldName": "ftp_auto_calc_enabled",
+          "description": "DeviceSettings.FtpAutoCalcEnabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "87": {
+          "fieldName": "sleep_do_not_disturb",
+          "description": "Sleep-time DND preference, separate from Sleep Mode and sleep tracking.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "90": {
+          "fieldName": "automatic_activity_detection",
+          "description": "Activity-detection bitmask; does not select automatic recording start. Combine flag values using bitwise OR.",
+          "bitmask": true,
+          "values": {
+            "0": "none",
+            "1": "running",
+            "2": "cycling",
+            "4": "swimming",
+            "8": "walking",
+            "16": "driving",
+            "32": "elliptical",
+            "64": "mowing",
+            "128": "stroller",
+            "256": "cart",
+            "512": "boxing",
+            "1024": "sedentary",
+            "2048": "generic",
+            "2147483648": "reserved"
+          }
+        },
+        "101": {
+          "fieldName": "goal_notification",
+          "description": "DeviceSettings.GoalNotification.",
+          "values": {
+            "0": "off",
+            "1": "on",
+            "2": "not_during_activity"
+          }
+        },
+        "104": {
+          "fieldName": "power_controls_items",
+          "description": "DeviceSettings.PowerControlsItems.",
+          "values": {
+            "0": "power_off",
+            "1": "lock_device",
+            "2": "do_not_disturb",
+            "3": "find_my_phone",
+            "4": "music_controls",
+            "5": "virb",
+            "6": "save_location",
+            "7": "sync",
+            "8": "bluetooth",
+            "9": "wifi",
+            "10": "set_time",
+            "11": "flashlight",
+            "12": "alarms",
+            "13": "stopwatch",
+            "14": "timer",
+            "15": "brightness",
+            "16": "payments",
+            "17": "altimeter",
+            "18": "barometer",
+            "19": "compass",
+            "20": "theater_mode",
+            "21": "ipass",
+            "22": "tips",
+            "23": "airplane_mode",
+            "24": "sos",
+            "25": "broadcast_hr",
+            "26": "time_zones",
+            "27": "sunrise_sunset",
+            "28": "night_vision",
+            "29": "inreach",
+            "30": "pool_mode",
+            "31": "moon_phase",
+            "32": "easycard",
+            "33": "battery_saver",
+            "34": "alipay"
+          }
+        },
+        "107": {
+          "fieldName": "alert_tones_app_only",
+          "description": "DeviceSettings.AlertTonesAppOnly.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "108": {
+          "fieldName": "auto_detect_max_hr",
+          "description": "DeviceSettings.AutoDetectMaxHr.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "109": {
+          "fieldName": "perf_cond_ntfctn_enabled",
+          "description": "DeviceSettings.PerfCondNtfctnEnabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "110": {
+          "fieldName": "new_vo2_ntfctn_enabled",
+          "description": "DeviceSettings.NewVo2NtfctnEnabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "111": {
+          "fieldName": "training_effect_ntfctn_enabled",
+          "description": "DeviceSettings.TrainingEffectNtfctnEnabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "112": {
+          "fieldName": "recovery_time_ntfctn_enabled",
+          "description": "DeviceSettings.RecoveryTimeNtfctnEnabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "124": {
+          "fieldName": "backlight_brightness_current_activity",
+          "description": "DeviceSettings.BacklightBrightnessCurrentActivity; Units: %.",
+          "units": "%"
+        },
+        "125": {
+          "fieldName": "backlight_timeout_current_activity",
+          "description": "DeviceSettings.BacklightTimeoutCurrentActivity; Units: s. The firmware may support fewer durations than the FIT encoding permits.",
+          "units": "s",
+          "values": {
+            "0": "infinite"
+          }
+        },
+        "126": {
+          "fieldName": "backlight_keys_current_activity",
+          "description": "DeviceSettings.BacklightKeysCurrentActivity.",
+          "values": {
+            "0": "off",
+            "1": "on",
+            "2": "after_sunset",
+            "3": "during_activity",
+            "4": "auto_interaction_gesture",
+            "5": "auto_interaction_only"
+          }
+        },
+        "127": {
+          "fieldName": "backlight_alerts_current_activity",
+          "description": "DeviceSettings.BacklightAlertsCurrentActivity.",
+          "values": {
+            "0": "off",
+            "1": "on",
+            "2": "after_sunset",
+            "3": "during_activity",
+            "4": "auto_interaction_gesture",
+            "5": "auto_interaction_only"
+          }
+        },
+        "128": {
+          "fieldName": "backlight_gesture_current_activity",
+          "description": "DeviceSettings.BacklightGestureCurrentActivity.",
+          "values": {
+            "0": "off",
+            "1": "on",
+            "2": "after_sunset",
+            "3": "during_activity",
+            "4": "auto_interaction_gesture",
+            "5": "auto_interaction_only"
+          }
+        },
+        "133": {
+          "fieldName": "firmware_auto_update",
+          "description": "Automatic firmware updates.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "135": {
+          "fieldName": "auto_lock_mode",
+          "description": "DeviceSettings.AutoLockMode.",
+          "values": {
+            "0": "off",
+            "1": "always",
+            "2": "in_activity",
+            "3": "watch_mode"
+          }
+        },
+        "138": {
+          "fieldName": "hourly_alert",
+          "description": "DeviceSettings.HourlyAlert.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "139": {
+          "fieldName": "turn_guidance_popup",
+          "description": "DeviceSettings.TurnGuidancePopup.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "141": {
+          "fieldName": "pulse_ox",
+          "description": "Pulse Ox.",
+          "values": {
+            "0": "off",
+            "1": "acclimation",
+            "2": "sleep_tracking",
+            "128": "reserved"
+          }
+        },
+        "142": {
+          "fieldName": "low_spo2_threshold",
+          "description": "DeviceSettings.LowSpo2Threshold; Units: percent.",
+          "units": "percent"
+        },
+        "143": {
+          "fieldName": "sedentary_hr_alert_threshold",
+          "description": "DeviceSettings.SedentaryHrAlertThreshold; Units: bpm.",
+          "units": "bpm"
+        },
+        "144": {
+          "fieldName": "activity_physio_true_up_enabled",
+          "description": "DeviceSettings.ActivityPhysioTrueUpEnabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "145": {
+          "fieldName": "smart_notification_timeout",
+          "description": "DeviceSettings.SmartNotificationTimeout.",
+          "values": {
+            "0": "short",
+            "1": "medium",
+            "2": "long",
+            "3": "very_long",
+            "4": "infinite"
+          }
+        },
+        "149": {
+          "fieldName": "high_heart_rate_alert",
+          "description": "High heart-rate alert.",
+          "values": {
+            "0": "off",
+            "1": "on",
+            "2": "auto"
+          }
+        },
+        "151": {
+          "fieldName": "low_spo2_alert_enabled",
+          "description": "DeviceSettings.LowSpo2AlertEnabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "159": {
+          "fieldName": "user_phone_verified",
+          "description": "DeviceSettings.UserPhoneVerified.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "161": {
+          "fieldName": "phone_notification_default_privacy",
+          "description": "DeviceSettings.PhoneNotificationDefaultPrivacy.",
+          "values": {
+            "0": "off",
+            "1": "action",
+            "2": "gesture"
+          }
+        },
+        "162": {
+          "fieldName": "phone_notification_activity_privacy",
+          "description": "DeviceSettings.PhoneNotificationActivityPrivacy.",
+          "values": {
+            "0": "off",
+            "1": "action",
+            "2": "gesture"
+          }
+        },
+        "163": {
+          "fieldName": "low_heart_rate_alert",
+          "description": "Low heart-rate alert.",
+          "values": {
+            "0": "off",
+            "1": "on",
+            "2": "auto"
+          }
+        },
+        "164": {
+          "fieldName": "abnormal_low_hr_alert_threshold",
+          "description": "DeviceSettings.AbnormalLowHrAlertThreshold; Units: bpm.",
+          "units": "bpm"
+        },
+        "165": {
+          "fieldName": "alipay_enabled",
+          "description": "DeviceSettings.AlipayEnabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "186": {
+          "fieldName": "always_on_display_general_use",
+          "description": "Options: Off / On. Keeps watch-face data visible at reduced brightness during general use.",
+          "baseType": 0,
+          "fieldSize": 1,
+          "values": {
+            "0": "off",
+            "1": "on"
+          },
+          "recordGuard": {
+            "fields": [
+              {
+                "number": 186,
+                "baseType": 0,
+                "size": 1
+              }
+            ],
+            "exactLayout": false,
+            "messageIndexRequired": false
+          }
+        },
+        "217": {
+          "fieldName": "satellite_mode",
+          "description": "System default satellite mode.",
+          "baseType": 0,
+          "values": {
+            "1": "gps_only",
+            "9": "auto"
+          },
+          "recordGuard": {
+            "fields": [
+              {
+                "number": 217,
+                "baseType": 0,
+                "size": 1
+              }
+            ],
+            "exactLayout": false,
+            "messageIndexRequired": false
+          }
+        }
+      }
+    },
+    "3": {
+      "messageName": "user_profile",
+      "fields": {
+        "1": {
+          "fieldName": "gender",
+          "description": "UserProfile.Gender.",
+          "values": {
+            "0": "female",
+            "1": "male"
+          }
+        },
+        "3": {
+          "fieldName": "height",
+          "description": "UserProfile.Height; Units: m.",
+          "units": "m"
+        },
+        "4": {
+          "fieldName": "weight",
+          "description": "UserProfile.Weight; Units: kg.",
+          "units": "kg"
+        },
+        "5": {
+          "fieldName": "language",
+          "description": "UserProfile.Language.",
+          "values": {
+            "0": "english",
+            "1": "french",
+            "2": "italian",
+            "3": "german",
+            "4": "spanish",
+            "5": "croatian",
+            "6": "czech",
+            "7": "danish",
+            "8": "dutch",
+            "9": "finnish",
+            "10": "greek",
+            "11": "hungarian",
+            "12": "norwegian",
+            "13": "polish",
+            "14": "portuguese",
+            "15": "slovakian",
+            "16": "slovenian",
+            "17": "swedish",
+            "18": "russian",
+            "19": "turkish",
+            "20": "latvian",
+            "21": "ukrainian",
+            "22": "arabic",
+            "23": "farsi",
+            "24": "bulgarian",
+            "25": "romanian",
+            "26": "chinese",
+            "27": "japanese",
+            "28": "korean",
+            "29": "taiwanese",
+            "30": "thai",
+            "31": "hebrew",
+            "32": "brazilian_portuguese",
+            "33": "indonesian",
+            "34": "malaysian",
+            "35": "vietnamese",
+            "36": "burmese",
+            "37": "mongolian",
+            "38": "estonian",
+            "39": "lithuanian",
+            "254": "custom"
+          }
+        },
+        "6": {
+          "fieldName": "elev_setting",
+          "description": "UserProfile.ElevSetting.",
+          "values": {
+            "0": "metric",
+            "1": "statute",
+            "2": "nautical"
+          }
+        },
+        "7": {
+          "fieldName": "weight_setting",
+          "description": "UserProfile.WeightSetting.",
+          "values": {
+            "0": "metric",
+            "1": "statute",
+            "2": "nautical"
+          }
+        },
+        "8": {
+          "fieldName": "resting_heart_rate",
+          "description": "UserProfile.RestingHeartRate; Units: bpm.",
+          "units": "bpm"
+        },
+        "12": {
+          "fieldName": "hr_setting",
+          "description": "UserProfile.HrSetting.",
+          "values": {
+            "0": "bpm",
+            "1": "max",
+            "2": "reserve"
+          }
+        },
+        "13": {
+          "fieldName": "speed_setting",
+          "description": "UserProfile.SpeedSetting.",
+          "values": {
+            "0": "metric",
+            "1": "statute",
+            "2": "nautical"
+          }
+        },
+        "14": {
+          "fieldName": "dist_setting",
+          "description": "UserProfile.DistSetting.",
+          "values": {
+            "0": "metric",
+            "1": "statute",
+            "2": "nautical"
+          }
+        },
+        "17": {
+          "fieldName": "activity_class",
+          "description": "UserProfile.ActivityClass.",
+          "values": {
+            "100": "level_max",
+            "127": "level",
+            "128": "athlete"
+          }
+        },
+        "18": {
+          "fieldName": "position_setting",
+          "description": "UserProfile.PositionSetting.",
+          "values": {
+            "0": "degree",
+            "1": "degree_minute",
+            "2": "degree_minute_second",
+            "3": "austrian_grid",
+            "4": "british_grid",
+            "5": "dutch_grid",
+            "6": "hungarian_grid",
+            "7": "finnish_grid",
+            "8": "german_grid",
+            "9": "icelandic_grid",
+            "10": "indonesian_equatorial",
+            "11": "indonesian_irian",
+            "12": "indonesian_southern",
+            "13": "india_zone0",
+            "14": "india_zone_ia",
+            "15": "india_zone_ib",
+            "16": "india_zone_iia",
+            "17": "india_zone_iib",
+            "18": "india_zone_iiia",
+            "19": "india_zone_iiib",
+            "20": "india_zone_iva",
+            "21": "india_zone_ivb",
+            "22": "irish_transverse",
+            "23": "irish_grid",
+            "24": "loran",
+            "25": "maidenhead_grid",
+            "26": "mgrs_grid",
+            "27": "new_zealand_grid",
+            "28": "new_zealand_transverse",
+            "29": "qatar_grid",
+            "30": "modified_swedish_grid",
+            "31": "swedish_grid",
+            "32": "south_african_grid",
+            "33": "swiss_grid",
+            "34": "taiwan_grid",
+            "35": "united_states_grid",
+            "36": "utm_ups_grid",
+            "37": "west_malayan",
+            "38": "borneo_rso",
+            "39": "estonian_grid",
+            "40": "latvian_grid",
+            "41": "swedish_ref99_grid"
+          }
+        },
+        "21": {
+          "fieldName": "temperature_setting",
+          "description": "UserProfile.TemperatureSetting.",
+          "values": {
+            "0": "metric",
+            "1": "statute",
+            "2": "nautical"
+          }
+        },
+        "24": {
+          "fieldName": "birth_year",
+          "description": "UserProfile.BirthYear."
+        },
+        "28": {
+          "fieldName": "wake_time",
+          "description": "Local seconds since midnight."
+        },
+        "29": {
+          "fieldName": "sleep_time",
+          "description": "Local seconds since midnight."
+        },
+        "30": {
+          "fieldName": "height_setting",
+          "description": "UserProfile.HeightSetting.",
+          "values": {
+            "0": "metric",
+            "1": "statute",
+            "2": "nautical"
+          }
+        },
+        "37": {
+          "fieldName": "firstbeat_running_lt_kmh",
+          "description": "UserProfile.FirstbeatRunningLtKmh; Units: km/h.",
+          "units": "km/h"
+        },
+        "43": {
+          "fieldName": "resting_hr_auto_update_enabled",
+          "description": "UserProfile.RestingHrAutoUpdateEnabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "52": {
+          "fieldName": "active_minutes_calc_method",
+          "description": "UserProfile.ActiveMinutesCalcMethod.",
+          "values": {
+            "0": "auto",
+            "1": "hr_zones"
+          }
+        },
+        "53": {
+          "fieldName": "active_minutes_moderate_zone",
+          "description": "UserProfile.ActiveMinutesModerateZone."
+        },
+        "54": {
+          "fieldName": "active_minutes_vigorous_zone",
+          "description": "UserProfile.ActiveMinutesVigorousZone."
+        }
+      }
+    },
+    "4": {
+      "messageName": "hrm_profile",
+      "fields": {
+        "2": {
+          "fieldName": "log_hrv",
+          "description": "HrmProfile.LogHrv.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        }
+      }
+    },
+    "6": {
+      "messageName": "bike_profile",
+      "fields": {
+        "3": {
+          "fieldName": "odometer",
+          "description": "BikeProfile.Odometer; Units: m.",
+          "units": "m"
+        },
+        "8": {
+          "fieldName": "custom_wheelsize",
+          "description": "BikeProfile.CustomWheelsize; Units: m.",
+          "units": "m"
+        },
+        "9": {
+          "fieldName": "auto_wheelsize",
+          "description": "BikeProfile.AutoWheelsize; Units: m.",
+          "units": "m"
+        },
+        "10": {
+          "fieldName": "bike_weight",
+          "description": "BikeProfile.BikeWeight; Units: kg.",
+          "units": "kg"
+        },
+        "12": {
+          "fieldName": "auto_wheel_cal",
+          "description": "BikeProfile.AutoWheelCal.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "17": {
+          "fieldName": "spdcad_enabled",
+          "description": "BikeProfile.SpdcadEnabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        }
+      }
+    },
+    "7": {
+      "messageName": "zones_target",
+      "fields": {
+        "1": {
+          "fieldName": "max_heart_rate",
+          "description": "ZonesTarget.MaxHeartRate."
+        },
+        "2": {
+          "fieldName": "threshold_heart_rate",
+          "description": "ZonesTarget.ThresholdHeartRate."
+        },
+        "3": {
+          "fieldName": "functional_threshold_power",
+          "description": "ZonesTarget.FunctionalThresholdPower."
+        },
+        "5": {
+          "fieldName": "hr_calc_type",
+          "description": "ZonesTarget.HrCalcType.",
+          "values": {
+            "0": "custom",
+            "1": "percent_max_hr",
+            "2": "percent_hrr",
+            "3": "percent_lthr"
+          }
+        },
+        "7": {
+          "fieldName": "pwr_calc_type",
+          "description": "ZonesTarget.PwrCalcType.",
+          "values": {
+            "0": "custom",
+            "1": "percent_ftp"
+          }
+        },
+        "9": {
+          "fieldName": "hr_zones_default",
+          "description": "ZonesTarget.HrZonesDefault.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "10": {
+          "fieldName": "auto_max_hr_enabled",
+          "description": "ZonesTarget.AutoMaxHrEnabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "11": {
+          "fieldName": "threshold_heart_rate_auto_detected",
+          "description": "ZonesTarget.ThresholdHeartRateAutoDetected.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "12": {
+          "fieldName": "ftp_auto_detected",
+          "description": "ZonesTarget.FtpAutoDetected.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "13": {
+          "fieldName": "power_zone_mode",
+          "description": "ZonesTarget.PowerZoneMode.",
+          "values": {
+            "7": "seven_zones",
+            "9": "nine_zones"
+          }
+        }
+      }
+    },
+    "8": {
+      "messageName": "hr_zone",
+      "fields": {
+        "1": {
+          "fieldName": "high_bpm",
+          "description": "HrZone.HighBpm; Units: bpm.",
+          "units": "bpm"
+        }
+      }
+    },
+    "9": {
+      "messageName": "power_zone",
+      "fields": {
+        "1": {
+          "fieldName": "high_value",
+          "description": "PowerZone.HighValue; Units: watts.",
+          "units": "watts"
+        }
+      }
+    },
+    "14": {
+      "messageName": "training_pages",
+      "fields": {
+        "1": {
+          "fieldName": "enabled",
+          "description": "TrainingPages.Enabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "3": {
+          "fieldName": "num_zones",
+          "description": "TrainingPages.NumZones."
+        },
+        "7": {
+          "fieldName": "field_display_ext",
+          "description": "TrainingPages.FieldDisplayExt.",
+          "values": {
+            "0": "calories",
+            "1": "calories_fat",
+            "2": "course_pt_dist",
+            "3": "cadence",
+            "4": "cadence_avg",
+            "5": "cadence_lap",
+            "6": "distance",
+            "7": "distance_lap",
+            "8": "distance_nautical",
+            "9": "elevation",
+            "10": "gps_accuracy",
+            "11": "grade",
+            "12": "heading",
+            "13": "heart_rate",
+            "14": "heart_rate_avg",
+            "15": "heart_rate_lap",
+            "16": "heart_rate_percent_max",
+            "17": "heart_rate_percent_max_avg",
+            "18": "heart_rate_percent_max_lap",
+            "19": "heart_rate_percent_reserve",
+            "20": "heart_rate_percent_reserve_avg",
+            "21": "heart_rate_percent_reserve_lap",
+            "22": "heart_rate_zone_number",
+            "23": "heart_rate_graph",
+            "24": "laps",
+            "25": "multisport_time",
+            "26": "multisport_dist",
+            "27": "nav_dist_to_destination",
+            "28": "nav_time_to_destination",
+            "29": "nav_dist_to_next",
+            "30": "nav_time_to_next",
+            "31": "nav_wpt_at_destination",
+            "32": "nav_wpt_at_next",
+            "33": "pace",
+            "34": "pace_avg",
+            "35": "pace_lap",
+            "36": "power",
+            "37": "power_avg",
+            "38": "power_kj",
+            "39": "power_lap",
+            "40": "power_max",
+            "41": "power_max_lap",
+            "42": "power_percent_ftp",
+            "43": "power_zone",
+            "44": "resistance",
+            "45": "steps",
+            "46": "steps_avg",
+            "47": "steps_lap",
+            "48": "speed",
+            "49": "speed_avg",
+            "50": "speed_lap",
+            "51": "speed_nautical",
+            "52": "sport",
+            "53": "sunrise",
+            "54": "sunset",
+            "55": "time_elapsed",
+            "56": "time",
+            "57": "time_avglap",
+            "58": "time_lap",
+            "59": "time_of_day",
+            "60": "total_ascent",
+            "61": "total_descent",
+            "62": "virtual_partner_dist",
+            "63": "virtual_partner_time",
+            "64": "workout_cals_to_go",
+            "65": "workout_dist_to_go",
+            "66": "workout_hr_to_go",
+            "67": "workout_reps_to_go",
+            "68": "workout_time_to_go",
+            "69": "sdm_reception",
+            "70": "hrm_reception",
+            "71": "bike_speed_reception",
+            "72": "bike_cadence_reception",
+            "73": "bike_speed_cadence_reception",
+            "74": "bike_power_reception",
+            "75": "fitness_equipment_reception",
+            "76": "weight_scale_reception",
+            "77": "vertical_speed",
+            "78": "temperature",
+            "79": "power3s_avg",
+            "80": "power30s_avg",
+            "81": "training_peaks_np",
+            "82": "training_peaks_tss",
+            "83": "training_peaks_if",
+            "84": "distance_last_lap",
+            "85": "pace_last_lap",
+            "86": "speed_last_lap",
+            "87": "time_last_lap",
+            "88": "vertical_speed_avg",
+            "89": "speed_zone",
+            "90": "pace_zone",
+            "91": "speed_max",
+            "92": "bearing",
+            "93": "nav_eta_at_destination",
+            "94": "nav_eta_at_next",
+            "95": "odometer",
+            "96": "battery_gauge",
+            "97": "gps_gauge",
+            "98": "watts_per_kg",
+            "99": "training_effect",
+            "100": "power_avg_last_lap",
+            "101": "power_max_last_lap",
+            "102": "lengths",
+            "103": "swim_efficiency",
+            "104": "stroke_type",
+            "105": "swim_efficiency_avg",
+            "106": "speed_zone_lap",
+            "107": "pace_zone_lap",
+            "108": "cycles_last_lap",
+            "109": "lap_summary_calories",
+            "110": "lap_summary_calories_fat",
+            "111": "lap_summary_speed_avg",
+            "112": "lap_summary_speed_max",
+            "113": "lap_summary_power_avg",
+            "114": "lap_summary_power_max",
+            "115": "lap_summary_total_ascent",
+            "116": "lap_summary_total_descent",
+            "117": "lap_summary_heart_rate_avg",
+            "118": "lap_summary_cycles_avg",
+            "119": "efficiency_set",
+            "120": "efficiency_last_set",
+            "121": "length_set",
+            "122": "length_last_set",
+            "123": "pace_last_length",
+            "124": "pace_set",
+            "125": "pace_last_set",
+            "126": "strokes",
+            "127": "stroke_distance_average",
+            "128": "stroke_distance_set",
+            "129": "stroke_distance_last_set",
+            "130": "distance_set",
+            "131": "distance_last_set",
+            "132": "stroke_rate_avg",
+            "133": "stroke_rate_set",
+            "134": "stroke_rate_last_set",
+            "135": "stroke_rate_last_length",
+            "136": "strokes_average",
+            "137": "strokes_last_length",
+            "138": "strokes_set",
+            "139": "strokes_last_set",
+            "140": "time_set",
+            "141": "time_last_set",
+            "142": "swolf_avg",
+            "143": "swolf_last_length",
+            "144": "swolf_set",
+            "145": "swolf_last_set",
+            "146": "power10s_avg",
+            "147": "training_peaks_np_lap",
+            "148": "training_peaks_np_last_lap",
+            "149": "left_right_balance",
+            "150": "left_right_balance_avg",
+            "151": "left_right_balance_avg_lap",
+            "152": "steps_last_lap",
+            "153": "time_last_length",
+            "154": "vector_state",
+            "155": "vector_status",
+            "156": "debug_state",
+            "157": "debug_state_lap_error",
+            "158": "lap_summary_training_peaks_np",
+            "159": "left_right_balance3s_avg",
+            "160": "left_right_balance10s_avg",
+            "161": "left_right_balance30s_avg",
+            "162": "date",
+            "163": "stroke_type_last_set",
+            "164": "stroke_type_last_length",
+            "165": "heart_rate_last_lap",
+            "166": "vector_status2",
+            "167": "vector_status3",
+            "168": "strokes_per_length_last_set",
+            "169": "interval_rest_times",
+            "170": "vertical_oscillation",
+            "171": "vertical_oscillation_avg",
+            "172": "vertical_oscillation_lap",
+            "173": "ground_contact_time",
+            "174": "ground_contact_time_avg",
+            "175": "ground_contact_time_lap",
+            "176": "pedal_smoothness",
+            "177": "torque_effectiveness",
+            "178": "gears",
+            "179": "front_gear",
+            "180": "rear_gear",
+            "181": "gear_battery",
+            "182": "gear_ratio",
+            "183": "pedal_smoothness_lap",
+            "184": "pedal_smoothness_last_lap",
+            "185": "torque_effectiveness_lap",
+            "186": "torque_effectiveness_last_lap",
+            "187": "heart_rate_percent_max_last_lap",
+            "188": "heart_rate_percent_reserve_last_lap",
+            "189": "speed_zone_last_lap",
+            "190": "pace_zone_last_lap",
+            "191": "left_right_balance_avg_last_lap",
+            "192": "vertical_oscillation_last_lap",
+            "193": "ground_contact_time_last_lap",
+            "194": "strokes_per_length_set",
+            "195": "interval_plus_rest_time",
+            "196": "estimated_finish_time",
+            "197": "distance_remaining",
+            "198": "time_in_hr_zone0",
+            "199": "time_in_hr_zone1",
+            "200": "time_in_hr_zone2",
+            "201": "time_in_hr_zone3",
+            "202": "time_in_hr_zone4",
+            "203": "time_in_hr_zone5",
+            "204": "time_in_hr_zone6",
+            "205": "stroke_rate",
+            "206": "time_in_power_zone0",
+            "207": "time_in_power_zone1",
+            "208": "time_in_power_zone2",
+            "209": "time_in_power_zone3",
+            "210": "time_in_power_zone4",
+            "211": "time_in_power_zone5",
+            "212": "time_in_power_zone6",
+            "213": "time_in_power_zone7",
+            "214": "temperature_high",
+            "215": "temperature_low",
+            "216": "connectiq",
+            "217": "last_session_time",
+            "218": "last_session_distance",
+            "219": "ascent_average",
+            "220": "descent_average",
+            "221": "ascent_max",
+            "222": "descent_max",
+            "223": "ascent_lap",
+            "224": "descent_lap",
+            "225": "ascent_last_lap",
+            "226": "descent_last_lap",
+            "227": "elevation_minimum",
+            "228": "elevation_maximum",
+            "229": "elevation_gps",
+            "230": "vertical_distance_destination",
+            "231": "ambient_pressure",
+            "232": "normal_pressure",
+            "233": "glide_ratio",
+            "234": "glide_ratio_to_target",
+            "235": "vertical_speed_to_target",
+            "236": "course",
+            "237": "gps_heading",
+            "238": "compass_heading",
+            "239": "off_course",
+            "240": "location",
+            "241": "destination_location",
+            "242": "latitude_longitude",
+            "243": "velocity_made_good",
+            "255": "legacy_invalid",
+            "256": "seated_standing",
+            "257": "time_standing",
+            "258": "time_standing_lap",
+            "259": "time_seated",
+            "260": "time_seated_lap",
+            "261": "cad_ecc",
+            "262": "pedal_weight",
+            "263": "pco",
+            "264": "pco_avg",
+            "265": "pco_lap",
+            "266": "power_phase_right",
+            "267": "power_phase_right_avg",
+            "268": "power_phase_right_lap",
+            "269": "power_phase_right_peak",
+            "270": "power_phase_right_peak_avg",
+            "271": "power_phase_right_peak_lap",
+            "272": "power_phase_left",
+            "273": "power_phase_left_avg",
+            "274": "power_phase_left_lap",
+            "275": "power_phase_left_peak",
+            "276": "power_phase_left_peak_avg",
+            "277": "power_phase_left_peak_lap",
+            "278": "power_standing_avg",
+            "279": "power_standing_lap",
+            "280": "power_standing_max",
+            "281": "power_standing_max_lap",
+            "282": "power_seated_avg",
+            "283": "power_seated_lap",
+            "284": "power_seated_max",
+            "285": "power_seated_max_lap",
+            "286": "cadence_standing_avg",
+            "287": "cadence_standing_lap",
+            "288": "cadence_standing_max",
+            "289": "cadence_standing_max_lap",
+            "290": "cadence_seated_avg",
+            "291": "cadence_seated_lap",
+            "292": "cadence_seated_max",
+            "293": "cadence_seated_max_lap",
+            "294": "trainer_resistance",
+            "295": "trainer_target_power",
+            "296": "heart_rate_set",
+            "297": "heart_rate_percent_reserve_set",
+            "298": "heart_rate_percent_max_set",
+            "299": "heart_rate_max_set",
+            "300": "heart_rate_percent_reserve_max_set",
+            "301": "heart_rate_percent_max_max_set",
+            "302": "workout_interval_distance",
+            "303": "workout_interval_timer",
+            "304": "workout_interval_speed",
+            "305": "workout_interval_pace",
+            "306": "workout_interval_power_avg",
+            "307": "gct_balance",
+            "308": "gct_balance_avg",
+            "309": "gct_balance_lap",
+            "310": "vertical_ratio",
+            "311": "vertical_ratio_avg",
+            "312": "vertical_ratio_lap",
+            "313": "step_length",
+            "314": "step_length_avg",
+            "315": "step_length_lap",
+            "316": "bike_light_network_size",
+            "317": "bike_light_battery_status",
+            "318": "bike_light_beam_angle_mode",
+            "319": "bike_light_network_configuration",
+            "320": "performance_condition",
+            "321": "vertical_ratio_last_lap",
+            "322": "gct_balance_last_lap",
+            "323": "step_length_last_lap",
+            "324": "heart_rate_last_set",
+            "325": "heart_rate_percent_reserve_last_set",
+            "326": "heart_rate_percent_max_last_set",
+            "327": "heart_rate_max_last_set",
+            "328": "heart_rate_percent_reserve_max_last_set",
+            "329": "heart_rate_percent_max_max_last_set",
+            "330": "time_standing_last_lap",
+            "331": "time_seated_last_lap",
+            "332": "pco_last_lap",
+            "333": "power_phase_right_last_lap",
+            "334": "power_phase_right_peak_last_lap",
+            "335": "power_phase_left_last_lap",
+            "336": "power_phase_left_peak_last_lap",
+            "337": "power_standing_last_lap",
+            "338": "power_seated_last_lap",
+            "339": "cadence_standing_last_lap",
+            "340": "cadence_seated_last_lap",
+            "341": "optical_heart_rate",
+            "342": "ant_hr_channel2",
+            "343": "heart_rate_graph_lite",
+            "344": "speed_graph_lite",
+            "345": "cadence_graph_lite",
+            "346": "power_graph_lite",
+            "347": "heart_rate_bar_chart",
+            "348": "speed_bar_chart",
+            "349": "cadence_bar_chart",
+            "350": "power_bar_chart",
+            "351": "heart_rate_complex_data",
+            "352": "speed_complex_data",
+            "353": "cadence_complex_data",
+            "354": "power_complex_data",
+            "355": "cadence_data_graph",
+            "356": "calories_data_graph",
+            "357": "distance_data_graph",
+            "358": "elevation_data_graph",
+            "359": "heart_rate_data_graph",
+            "360": "power_data_graph",
+            "361": "speed_data_graph",
+            "362": "time_data_graph",
+            "363": "stroke_distance",
+            "364": "realtime_debug1",
+            "365": "realtime_debug2",
+            "366": "realtime_debug3",
+            "367": "realtime_debug4",
+            "368": "elevation_graph_lite",
+            "369": "virtual_partner_lite",
+            "370": "turn_list",
+            "371": "speed_over_ground",
+            "372": "water_depth",
+            "373": "water_temperature",
+            "374": "engine_rpm1",
+            "375": "engine_rpm2",
+            "376": "engine_rpm3",
+            "377": "engine_rpm4",
+            "378": "apparent_wind_angle",
+            "379": "apparent_wind_speed",
+            "380": "true_wind_angle",
+            "381": "true_wind_speed",
+            "382": "wind_velocity_made_good",
+            "383": "race_timer",
+            "384": "time_to_burn",
+            "385": "distance_to_line",
+            "386": "bearing_to_waypoint",
+            "387": "distance_to_waypoint",
+            "388": "cross_track_deviation",
+            "389": "desired_course",
+            "390": "time_to_startline",
+            "391": "true_wind_direction",
+            "392": "vmg_waypoint",
+            "393": "vmg_startline",
+            "394": "bearing_to_destination",
+            "395": "battery_hours_remaining",
+            "396": "heart_rate_zone_gauge",
+            "397": "power_zone_gauge",
+            "398": "speed_zone_gauge",
+            "399": "cadence_zone_gauge",
+            "400": "stroke_rate_lap",
+            "401": "stroke_rate_last_lap",
+            "402": "strokes_lap",
+            "403": "strokes_last_lap",
+            "404": "stroke_distance_lap",
+            "405": "stroke_distance_last_lap",
+            "406": "swolf_lap",
+            "407": "swolf_last_lap",
+            "408": "shimano_battery",
+            "409": "gear_combo",
+            "410": "shimano_suspension",
+            "411": "shimano_shift_mode",
+            "412": "cadence_rd_gauge",
+            "413": "ground_contact_time_rd_gauge",
+            "414": "ground_contact_time_balance_rd_gauge",
+            "415": "vertical_oscillation_rd_gauge",
+            "416": "vertical_ratio_rd_gauge",
+            "417": "stride_length_rd_gauge",
+            "418": "time_in_power_zone8",
+            "419": "time_in_power_zone9",
+            "420": "exd_unrecognized_number",
+            "421": "segment_avg_speed",
+            "422": "segment_avg_pace",
+            "423": "muscle_oxygen_percent",
+            "424": "muscle_oxygen_total",
+            "425": "preview_field1",
+            "426": "preview_field2",
+            "427": "preview_field3",
+            "428": "preview_field4",
+            "429": "moving_time",
+            "430": "stopped_time",
+            "431": "moving_average_speed",
+            "432": "overall_average_speed",
+            "433": "anaerobic_training_effect",
+            "434": "workout_set_count",
+            "435": "workout_set_reps",
+            "436": "workout_session_reps",
+            "437": "watts_per_kg_avg",
+            "438": "watts_per_kg_avg_lap",
+            "439": "watts_per_kg3s_avg",
+            "440": "watts_per_kg10s_avg",
+            "441": "watts_per_kg30s_avg",
+            "442": "vam_lap",
+            "443": "vam_session",
+            "444": "total_ascent_remaining",
+            "445": "ascent_remaining_to_next",
+            "446": "lap_summary_vam_avg",
+            "447": "nautical_speed_avg",
+            "448": "nautical_speed_max",
+            "449": "floors_climbed",
+            "450": "floors_descended",
+            "451": "floor_climb_rate",
+            "452": "breathing_rate",
+            "453": "current_physiological_stress",
+            "454": "exd_unrecognized_string",
+            "455": "accumulated_lap_time",
+            "456": "preview_field5",
+            "457": "preview_field6",
+            "458": "preview_field7",
+            "459": "preview_field8",
+            "460": "set_reps",
+            "461": "set_timer",
+            "462": "estimated_total_distance",
+            "463": "cda",
+            "464": "cda_avg",
+            "465": "cda_avg_lap",
+            "466": "air_speed",
+            "467": "air_speed_avg",
+            "468": "air_speed_avg_lap",
+            "469": "air_speed_yaw_angle",
+            "470": "air_speed_yaw_angle_avg",
+            "471": "air_speed_yaw_angle_avg_lap",
+            "472": "watts_per_cda",
+            "473": "watts_per_cda_avg",
+            "474": "watts_per_cda_avg_lap",
+            "475": "lap_summary_cda_avg",
+            "476": "lap_summary_air_speed_avg",
+            "477": "lap_summary_air_speed_yaw_angle_avg",
+            "478": "epoc",
+            "479": "pulse_ox",
+            "480": "power_percent_friction",
+            "481": "power_percent_grade",
+            "482": "power_percent_user",
+            "483": "power_percent_wind",
+            "484": "power_percent_breakdown",
+            "485": "power_net",
+            "486": "grit_score",
+            "487": "grit_score_lap",
+            "488": "flow_score",
+            "489": "flow_score_lap",
+            "490": "cda_guide",
+            "491": "ebike_assist_mode",
+            "492": "ebike_shifting_advice",
+            "493": "ebike_battery",
+            "494": "ebike_travel_range",
+            "495": "grit_score_avg",
+            "496": "grit_score_avg_lap",
+            "497": "flow_score_avg",
+            "498": "flow_score_avg_lap",
+            "499": "stress",
+            "500": "course_over_ground",
+            "501": "speed_over_ground_avg_last_lap",
+            "502": "speed_over_ground_avg_lap",
+            "503": "time_active",
+            "504": "speed_over_ground_avg",
+            "505": "speed_over_ground_max",
+            "506": "nautical_speed_over_ground",
+            "507": "nautical_speed_over_ground_avg",
+            "508": "nautical_speed_over_ground_max",
+            "509": "split_pace_avg",
+            "510": "pace_pro_gauge",
+            "511": "workout_comparison",
+            "512": "run_cadence_graphical",
+            "513": "workout_current_repeat_time_to_go"
+          }
+        },
+        "8": {
+          "fieldName": "layout",
+          "description": "TrainingPages.Layout.",
+          "values": {
+            "0": "a",
+            "1": "b",
+            "2": "c",
+            "3": "d",
+            "4": "e",
+            "5": "f",
+            "6": "g",
+            "7": "h",
+            "8": "i",
+            "9": "j",
+            "10": "k",
+            "11": "l",
+            "12": "m",
+            "13": "n",
+            "14": "o",
+            "15": "p",
+            "16": "q",
+            "17": "r",
+            "18": "s",
+            "19": "t",
+            "20": "u",
+            "21": "v",
+            "22": "w",
+            "23": "x",
+            "24": "y",
+            "25": "z"
+          }
+        },
+        "10": {
+          "fieldName": "data_screen_type",
+          "description": "TrainingPages.DataScreenType.",
+          "values": {
+            "0": "custom1",
+            "1": "custom2",
+            "2": "custom3",
+            "3": "custom4",
+            "4": "custom5",
+            "5": "custom6",
+            "6": "custom7",
+            "7": "custom8",
+            "8": "custom9",
+            "9": "custom10",
+            "10": "custom11",
+            "11": "custom12",
+            "12": "custom13",
+            "13": "custom14",
+            "14": "custom15",
+            "15": "custom16",
+            "16": "custom17",
+            "17": "custom18",
+            "18": "custom19",
+            "19": "custom20",
+            "20": "swim_rest",
+            "21": "clock",
+            "22": "heart_rate_graphical",
+            "23": "heart_rate",
+            "24": "power",
+            "25": "map",
+            "26": "virtual_partner",
+            "27": "running_dynamics1",
+            "28": "running_dynamics2",
+            "29": "drill_log",
+            "30": "music_controls",
+            "31": "race_target",
+            "32": "lap_banner",
+            "33": "ski_run",
+            "34": "ski_totals",
+            "35": "compass",
+            "36": "run_walk",
+            "37": "multisport_transition",
+            "38": "workout",
+            "39": "workout_start",
+            "40": "workout_transition",
+            "41": "virb",
+            "42": "metronome",
+            "43": "total_time",
+            "44": "elevation_plot",
+            "45": "abc",
+            "46": "baro_plot",
+            "47": "compass_navigation",
+            "48": "map_navigation",
+            "49": "future_plot",
+            "50": "nav1",
+            "51": "nav2",
+            "52": "nav3",
+            "53": "nav4",
+            "54": "dual_grid",
+            "55": "segment_vp_map",
+            "56": "segment_vp_data",
+            "57": "grouptrack_list",
+            "58": "ebike",
+            "59": "trainer_resistance",
+            "60": "trainer_power",
+            "61": "course_data",
+            "62": "course_points",
+            "63": "cycling_dynamics",
+            "64": "bike_light_control",
+            "65": "auto_virtual_partner",
+            "66": "add_new",
+            "67": "ohr_debug1",
+            "68": "ohr_debug2",
+            "69": "fly_hsi",
+            "70": "fly_instruments",
+            "71": "fly_nrst",
+            "72": "fly_wpt",
+            "73": "workout_notes",
+            "74": "lap_summary",
+            "77": "dive_data",
+            "78": "dive_compass",
+            "79": "gauge_dive_data",
+            "80": "set",
+            "81": "workout_notes_next_step",
+            "82": "breathing",
+            "83": "apnea_dive_data",
+            "84": "dive_time_date",
+            "85": "weather",
+            "86": "smart_notifications",
+            "87": "auto_set",
+            "88": "climb_pro",
+            "89": "cycling_aero_dynamics",
+            "90": "inreach",
+            "91": "spo2",
+            "92": "connext1",
+            "93": "connext2",
+            "94": "connext3",
+            "95": "shimano_steps",
+            "96": "fbt_debug1",
+            "97": "fbt_debug2",
+            "98": "dive_stopwatch",
+            "99": "video",
+            "100": "sail_race_start_timer",
+            "101": "tack_assist",
+            "102": "expedition1",
+            "103": "expedition2"
+          }
+        }
+      }
+    },
+    "70": {
+      "messageName": "map_profile",
+      "fields": {
+        "11": {
+          "fieldName": "map_orientation",
+          "description": "MapProfile.MapOrientation.",
+          "values": {
+            "0": "north_up",
+            "1": "track_up",
+            "2": "track_up3d"
+          }
+        },
+        "13": {
+          "fieldName": "map_show_locations",
+          "description": "MapProfile.MapShowLocations.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "14": {
+          "fieldName": "map_auto_zoom",
+          "description": "MapProfile.MapAutoZoom.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        }
+      }
+    },
+    "127": {
+      "messageName": "connectivity",
+      "fields": {
+        "1": {
+          "fieldName": "bluetooth_le_enabled",
+          "description": "Connectivity.BluetoothLeEnabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        }
+      }
+    },
+    "159": {
+      "messageName": "watchface_settings",
+      "fields": {
+        "0": {
+          "fieldName": "mode",
+          "description": "WatchfaceSettings.Mode.",
+          "values": {
+            "0": "digital",
+            "1": "analog",
+            "2": "connect_iq",
+            "3": "disabled"
+          }
+        },
+        "10": {
+          "fieldName": "data_type",
+          "description": "WatchfaceSettings.DataType.",
+          "values": {
+            "0": "battery",
+            "1": "steps",
+            "2": "calories",
+            "3": "seconds",
+            "4": "floors",
+            "5": "intensity_minutes",
+            "6": "date",
+            "7": "weather",
+            "8": "calendar",
+            "9": "status",
+            "10": "garmin_logo",
+            "11": "sunrise_sunset",
+            "12": "move",
+            "13": "alternate_date",
+            "14": "altitude",
+            "15": "baro_trend",
+            "16": "utc",
+            "17": "notifications",
+            "18": "heart_rate",
+            "19": "recovery_time",
+            "20": "weekly_run_distance",
+            "21": "no_fly_indicator",
+            "22": "none",
+            "23": "time_of_day",
+            "24": "baro_press",
+            "25": "moon_phase",
+            "26": "stress",
+            "27": "body_battery",
+            "28": "vo2max",
+            "29": "training_status"
+          }
+        },
+        "12": {
+          "fieldName": "id",
+          "description": "WatchfaceSettings.Id."
+        }
+      }
+    },
+    "188": {
+      "messageName": "ohr_settings",
+      "fields": {
+        "0": {
+          "fieldName": "optical_heart_rate",
+          "description": "Optical heart rate.",
+          "values": {
+            "0": "off",
+            "1": "on",
+            "2": "auto"
+          }
+        },
+        "1": {
+          "fieldName": "heart_rate_sample_interval",
+          "description": "Configured interval in seconds."
+        },
+        "2": {
+          "fieldName": "heart_rate_transmission",
+          "description": "Heart-rate transmission.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "3": {
+          "fieldName": "heart_rate_broadcast_during_activity",
+          "description": "Heart-rate broadcast during activity.",
+          "values": {
+            "0": "off",
+            "1": "on",
+            "2": "auto"
+          }
+        }
+      }
+    },
+    "222": {
+      "messageName": "alarm_settings",
+      "fields": {
+        "2": {
+          "fieldName": "enabled",
+          "description": "AlarmSettings.Enabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        }
+      }
+    },
+    "231": {
+      "messageName": "nav_alert_settings",
+      "fields": {
+        "0": {
+          "fieldName": "distance",
+          "description": "NavAlertSettings.Distance."
+        },
+        "1": {
+          "fieldName": "time",
+          "description": "NavAlertSettings.Time."
+        },
+        "2": {
+          "fieldName": "enabled",
+          "description": "NavAlertSettings.Enabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "3": {
+          "fieldName": "alert_type",
+          "description": "NavAlertSettings.AlertType.",
+          "values": {
+            "0": "distance",
+            "1": "time"
+          }
+        }
+      }
+    },
+    "240": {
+      "messageName": "avtn_settings",
+      "fields": {
+        "0": {
+          "fieldName": "avtn_units_enabled",
+          "description": "AvtnSettings.AvtnUnitsEnabled.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "1": {
+          "fieldName": "avtn_dist_setting",
+          "description": "AvtnSettings.AvtnDistSetting.",
+          "values": {
+            "0": "metric",
+            "1": "statute",
+            "2": "nautical"
+          }
+        },
+        "2": {
+          "fieldName": "avtn_speed_setting",
+          "description": "AvtnSettings.AvtnSpeedSetting.",
+          "values": {
+            "0": "metric",
+            "1": "statute",
+            "2": "nautical"
+          }
+        },
+        "3": {
+          "fieldName": "avtn_elev_setting",
+          "description": "AvtnSettings.AvtnElevSetting.",
+          "values": {
+            "0": "metric",
+            "1": "statute",
+            "2": "nautical"
+          }
+        }
+      }
+    },
+    "242": {
+      "messageName": "music_player_settings",
+      "fields": {
+        "0": {
+          "fieldName": "music_source",
+          "description": "MusicPlayerSettings.MusicSource.",
+          "values": {
+            "0": "device",
+            "1": "phone",
+            "2": "ciq",
+            "3": "spotify"
+          }
+        },
+        "1": {
+          "fieldName": "music_source_data",
+          "description": "MusicPlayerSettings.MusicSourceData."
+        },
+        "2": {
+          "fieldName": "channel_type",
+          "description": "MusicPlayerSettings.ChannelType.",
+          "values": {
+            "0": "mono",
+            "1": "stereo"
+          }
+        }
+      }
+    },
+    "266": {
+      "messageName": "audio_prompt_settings_event",
+      "fields": {
+        "1": {
+          "fieldName": "lap_alert",
+          "description": "AudioPromptSettingsEvent.LapAlert.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "2": {
+          "fieldName": "speed_pace_alert",
+          "description": "AudioPromptSettingsEvent.SpeedPaceAlert.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "3": {
+          "fieldName": "heart_rate_alert",
+          "description": "AudioPromptSettingsEvent.HeartRateAlert.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "4": {
+          "fieldName": "speed_pace_type",
+          "description": "AudioPromptSettingsEvent.SpeedPaceType.",
+          "values": {
+            "0": "average",
+            "1": "current",
+            "2": "lap"
+          }
+        },
+        "5": {
+          "fieldName": "speed_pace_freq",
+          "description": "AudioPromptSettingsEvent.SpeedPaceFreq.",
+          "values": {
+            "0": "lap",
+            "1": "time"
+          }
+        },
+        "7": {
+          "fieldName": "heart_rate_type",
+          "description": "AudioPromptSettingsEvent.HeartRateType.",
+          "values": {
+            "0": "heart_rate",
+            "1": "heart_rate_zone",
+            "2": "percent_max_heart_rate",
+            "3": "percent_heart_rate_reserve"
+          }
+        },
+        "8": {
+          "fieldName": "heart_rate_freq",
+          "description": "AudioPromptSettingsEvent.HeartRateFreq.",
+          "values": {
+            "0": "lap",
+            "1": "time"
+          }
+        },
+        "10": {
+          "fieldName": "audio_dialect",
+          "description": "AudioPromptSettingsEvent.AudioDialect.",
+          "values": {
+            "0": "enus",
+            "1": "engb",
+            "2": "enau",
+            "3": "frfr",
+            "4": "frca",
+            "5": "eses",
+            "6": "esmx",
+            "7": "dede",
+            "8": "itit",
+            "9": "nlnl",
+            "10": "dadk",
+            "11": "svse",
+            "12": "fifi",
+            "13": "nono",
+            "14": "ruru",
+            "15": "ptbr",
+            "16": "hrhr",
+            "17": "cscz",
+            "18": "elgr",
+            "19": "huhu",
+            "20": "plpl",
+            "21": "sksk",
+            "22": "arae",
+            "23": "heil",
+            "24": "trtr",
+            "25": "zhcn",
+            "26": "zhtw",
+            "27": "jajp",
+            "28": "kokr",
+            "29": "thth",
+            "30": "idid",
+            "31": "msmy",
+            "32": "vivi",
+            "33": "roro"
+          }
+        },
+        "11": {
+          "fieldName": "timer_events",
+          "description": "AudioPromptSettingsEvent.TimerEvents.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "12": {
+          "fieldName": "activity_alerts",
+          "description": "AudioPromptSettingsEvent.ActivityAlerts.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "13": {
+          "fieldName": "power_alert",
+          "description": "AudioPromptSettingsEvent.PowerAlert.",
+          "values": {
+            "0": "false",
+            "1": "true"
+          }
+        },
+        "14": {
+          "fieldName": "power_type",
+          "description": "AudioPromptSettingsEvent.PowerType.",
+          "values": {
+            "0": "average",
+            "1": "normalized",
+            "2": "lap"
+          }
+        },
+        "15": {
+          "fieldName": "power_freq",
+          "description": "AudioPromptSettingsEvent.PowerFreq.",
+          "values": {
+            "0": "lap",
+            "1": "time"
+          }
+        }
+      }
+    },
+    "354": {
+      "messageName": "hot_keys",
+      "fields": {
+        "0": {
+          "fieldName": "hold_start",
+          "description": "Top-right START/GPS button hold action. GPS to Settings was isolated in before/after watch exports. Other action codes are not yet identified; the firmware may support fewer actions than the FIT encoding permits.",
+          "baseType": 0,
+          "values": {
+            "0": "none",
+            "25": "gps",
+            "29": "sync_time",
+            "42": "abc",
+            "43": "set",
+            "52": "settings"
+          },
+          "recordGuard": {
+            "fields": [
+              {
+                "number": 0,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 1,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 2,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 3,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 4,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 5,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 6,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 7,
+                "baseType": 0,
+                "size": 1
+              }
+            ],
+            "exactLayout": true,
+            "messageIndexRequired": false
+          }
+        },
+        "1": {
+          "fieldName": "hold_back",
+          "description": "BACK button hold action, inferred from the reported current watch menu (SET). Other action codes are not yet identified; the firmware may support fewer actions than the FIT encoding permits.",
+          "baseType": 0,
+          "values": {
+            "0": "none",
+            "25": "gps",
+            "29": "sync_time",
+            "42": "abc",
+            "43": "set",
+            "52": "settings"
+          },
+          "recordGuard": {
+            "fields": [
+              {
+                "number": 0,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 1,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 2,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 3,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 4,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 5,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 6,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 7,
+                "baseType": 0,
+                "size": 1
+              }
+            ],
+            "exactLayout": true,
+            "messageIndexRequired": false
+          }
+        },
+        "2": {
+          "fieldName": "hold_down",
+          "description": "DOWN button hold action, inferred from the reported current watch menu (ABC). Other action codes are not yet identified; the firmware may support fewer actions than the FIT encoding permits.",
+          "baseType": 0,
+          "values": {
+            "0": "none",
+            "25": "gps",
+            "29": "sync_time",
+            "42": "abc",
+            "43": "set",
+            "52": "settings"
+          },
+          "recordGuard": {
+            "fields": [
+              {
+                "number": 0,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 1,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 2,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 3,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 4,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 5,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 6,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 7,
+                "baseType": 0,
+                "size": 1
+              }
+            ],
+            "exactLayout": true,
+            "messageIndexRequired": false
+          }
+        },
+        "3": {
+          "fieldName": "slot3",
+          "description": "One of the three remaining button-combination slots: hold START+DOWN, START+UP, or BACK+LIGHT. The exact field-to-combination mapping has not been confirmed. Other action codes are not yet identified; the firmware may support fewer actions than the FIT encoding permits.",
+          "baseType": 0,
+          "values": {
+            "0": "none",
+            "25": "gps",
+            "29": "sync_time",
+            "42": "abc",
+            "43": "set",
+            "52": "settings"
+          },
+          "recordGuard": {
+            "fields": [
+              {
+                "number": 0,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 1,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 2,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 3,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 4,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 5,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 6,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 7,
+                "baseType": 0,
+                "size": 1
+              }
+            ],
+            "exactLayout": true,
+            "messageIndexRequired": false
+          }
+        },
+        "4": {
+          "fieldName": "slot4",
+          "description": "One of the three remaining button-combination slots: hold START+DOWN, START+UP, or BACK+LIGHT. The exact field-to-combination mapping has not been confirmed. Other action codes are not yet identified; the firmware may support fewer actions than the FIT encoding permits.",
+          "baseType": 0,
+          "values": {
+            "0": "none",
+            "25": "gps",
+            "29": "sync_time",
+            "42": "abc",
+            "43": "set",
+            "52": "settings"
+          },
+          "recordGuard": {
+            "fields": [
+              {
+                "number": 0,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 1,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 2,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 3,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 4,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 5,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 6,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 7,
+                "baseType": 0,
+                "size": 1
+              }
+            ],
+            "exactLayout": true,
+            "messageIndexRequired": false
+          }
+        },
+        "5": {
+          "fieldName": "slot5",
+          "description": "One of the three remaining button-combination slots: hold START+DOWN, START+UP, or BACK+LIGHT. The exact field-to-combination mapping has not been confirmed. Other action codes are not yet identified; the firmware may support fewer actions than the FIT encoding permits.",
+          "baseType": 0,
+          "values": {
+            "0": "none",
+            "25": "gps",
+            "29": "sync_time",
+            "42": "abc",
+            "43": "set",
+            "52": "settings"
+          },
+          "recordGuard": {
+            "fields": [
+              {
+                "number": 0,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 1,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 2,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 3,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 4,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 5,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 6,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 7,
+                "baseType": 0,
+                "size": 1
+              }
+            ],
+            "exactLayout": true,
+            "messageIndexRequired": false
+          }
+        },
+        "6": {
+          "fieldName": "hold_back_up",
+          "description": "BACK+UP button hold action, identified by a watch export changing None to Sync Time. Other action codes are not yet identified; the firmware may support fewer actions than the FIT encoding permits.",
+          "baseType": 0,
+          "values": {
+            "0": "none",
+            "25": "gps",
+            "29": "sync_time",
+            "42": "abc",
+            "43": "set",
+            "52": "settings"
+          },
+          "recordGuard": {
+            "fields": [
+              {
+                "number": 0,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 1,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 2,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 3,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 4,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 5,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 6,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 7,
+                "baseType": 0,
+                "size": 1
+              }
+            ],
+            "exactLayout": true,
+            "messageIndexRequired": false
+          }
+        }
+      }
+    },
+    "373": {
+      "messageName": "morning_report",
+      "fields": {
+        "0": {
+          "fieldName": "enabled",
+          "description": "Show Report switch, confirmed by a morning-report-only watch export. Report contents and messages are preserved. This field does not control low-battery alerts.",
+          "baseType": 0,
+          "values": {
+            "0": "off",
+            "1": "on"
+          },
+          "recordGuard": {
+            "fields": [
+              {
+                "number": 0,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 1,
+                "baseType": 0,
+                "size": 13
+              },
+              {
+                "number": 2,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 3,
+                "baseType": 0,
+                "size": 1
+              },
+              {
+                "number": 4,
+                "baseType": 7,
+                "size": 60
+              },
+              {
+                "number": 5,
+                "baseType": 7,
+                "size": 60
+              },
+              {
+                "number": 6,
+                "baseType": 7,
+                "size": 60
+              },
+              {
+                "number": 7,
+                "baseType": 7,
+                "size": 60
+              },
+              {
+                "number": 8,
+                "baseType": 7,
+                "size": 60
+              }
+            ],
+            "exactLayout": true,
+            "messageIndexRequired": false
+          }
+        }
+      }
+    },
+    "379": {
+      "messageName": "sleep_schedule",
+      "fields": {
+        "0": {
+          "fieldName": "start_time",
+          "description": "Weekly schedule slot; weekday mapping is unconfirmed. Local seconds since midnight.",
+          "units": "s",
+          "baseType": 6,
+          "recordGuard": {
+            "fields": [
+              {
+                "number": 0,
+                "baseType": 134,
+                "size": 4
+              },
+              {
+                "number": 1,
+                "baseType": 134,
+                "size": 4
+              },
+              {
+                "number": 254,
+                "baseType": 132,
+                "size": 2
+              }
+            ],
+            "exactLayout": true,
+            "messageIndexRequired": true,
+            "messageIndexMinimum": 0,
+            "messageIndexMaximum": 6
+          }
+        },
+        "1": {
+          "fieldName": "end_time",
+          "description": "Weekly schedule slot; weekday mapping is unconfirmed. Local seconds since midnight.",
+          "units": "s",
+          "baseType": 6,
+          "recordGuard": {
+            "fields": [
+              {
+                "number": 0,
+                "baseType": 134,
+                "size": 4
+              },
+              {
+                "number": 1,
+                "baseType": 134,
+                "size": 4
+              },
+              {
+                "number": 254,
+                "baseType": 132,
+                "size": 2
+              }
+            ],
+            "exactLayout": true,
+            "messageIndexRequired": true,
+            "messageIndexMinimum": 0,
+            "messageIndexMaximum": 6
+          }
+        }
+      }
+    }
+  }
+}

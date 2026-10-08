@@ -1,0 +1,29 @@
+{
+  "appId": "app.fitviewer.desktop",
+  "productName": "FIT Viewer",
+  "directories": { "app": "desktop", "output": "release" },
+  "files": [
+    "main.cjs",
+    "package.json",
+    "dist/**/*",
+    "!dist/**/*.map",
+    "!node_modules/**/*"
+  ],
+  "asar": true,
+  "npmRebuild": false,
+  "artifactName": "FIT-Viewer-${version}-${os}-${arch}.${ext}",
+  "mac": {
+    "category": "public.app-category.utilities",
+    "target": ["dmg", "zip"],
+    "identity": "-",
+    "hardenedRuntime": false,
+    "notarize": false
+  },
+  "win": { "target": ["nsis"] },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowElevation": false,
+    "allowToChangeInstallationDirectory": true
+  }
+}
