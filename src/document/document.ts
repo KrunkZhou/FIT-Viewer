@@ -1,6 +1,7 @@
 import { Profile } from "@garmin/fitsdk";
 import type {
   Cell,
+  Definition,
   DocumentSummary,
   FieldInfo,
   Job,
@@ -10,11 +11,13 @@ import type {
   SingleEntryView,
   TablePage,
   TableQuery,
+  WireField,
 } from "../model";
 import { Metadata, words } from "../metadata/profile";
 import { fieldKey, numberValue, valid, WIDTHS } from "../protocol/binary";
 import { type FitIndex, idleJob, readFit } from "../protocol/reader";
 import { expandComponents } from "./components";
+import { positionCoordinates, positionFields } from "./positions";
 import hrUtility from "@garmin/fitsdk/src/utils-hr-mesg.js";
 
 export class FitDocument {
@@ -27,6 +30,7 @@ export class FitDocument {
   private filterCache = new Map<string, number[]>();
   private optionCache = new Map<string, Record<string, string[]>>();
   private gpsPoints = 0;
+  private hasMap = false;
   private startTimestamp?: number;
   private endTimestamp?: number;
   private sports = new Set<string>();
@@ -75,14 +79,7 @@ export class FitDocument {
       subfiles: this.index.subfiles,
       diagnostics: this.index.diagnostics.slice(0, 50),
       diagnosticCount: this.index.diagnostics.length,
-      hasMap: this.index.definitions.some((d) =>
-        d.fields.some(
-          (f) =>
-            Profile.messages[d.message]?.fields[f.id]?.name === "positionLat" ||
-            Profile.messages[d.message]?.fields[f.id]?.name ===
-              "startPositionLat",
-        ),
-      ),
+      hasMap: this.hasMap,
       hasCharts: this.index.records.length > 0,
       hasHrv: this.index.messages.has(78) || this.index.messages.has(132),
       repairable: this.index.diagnostics.some((d) => d.repair !== "none"),
@@ -357,6 +354,24 @@ export class FitDocument {
     return { entries };
   }
   private async buildDerived(job: Job): Promise<void> {
+    const positions = new Map<
+      Definition,
+      { latitude: WireField; longitude: WireField }
+    >();
+    for (const definition of this.index.definitions) {
+      const fields = positionFields(definition.message);
+      if (!fields) continue;
+      const latitude = definition.fields.find(
+        (field) =>
+          field.developer === undefined && field.id === fields.latitude,
+      );
+      const longitude = definition.fields.find(
+        (field) =>
+          field.developer === undefined && field.id === fields.longitude,
+      );
+      if (latitude && longitude)
+        positions.set(definition, { latitude, longitude });
+    }
     const accumulators = new Map<string, number>();
     let previous: RecordRef | undefined;
     let previousLat: number | undefined;
@@ -373,6 +388,22 @@ export class FitDocument {
     for (let id = 0; id < this.index.records.length; id++) {
       const record = this.index.records[id];
       const raw = this.raw(id);
+      const position = !this.hasMap && positions.get(record.definition);
+      if (position) {
+        const coordinate = (wire: WireField) =>
+          this.metadata.cell(
+            record,
+            wire,
+            raw[String(wire.id)] ?? null,
+            this.metadata.field(record, wire, raw),
+          ).value;
+        this.hasMap = Boolean(
+          positionCoordinates(
+            coordinate(position.latitude),
+            coordinate(position.longitude),
+          ),
+        );
+      }
       const sportField =
         record.definition.message === 12
           ? "0"

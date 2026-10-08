@@ -19,11 +19,15 @@
     "hardenedRuntime": false,
     "notarize": false
   },
-  "win": { "target": ["nsis"] },
+  "win": { "target": ["nsis", "portable"] },
   "nsis": {
+    "artifactName": "FIT-Viewer-${version}-win-${arch}-setup.${ext}",
     "oneClick": false,
     "perMachine": false,
     "allowElevation": false,
     "allowToChangeInstallationDirectory": true
+  },
+  "portable": {
+    "artifactName": "FIT-Viewer-${version}-win-${arch}-portable.${ext}"
   }
 }

@@ -1,4 +1,3 @@
-import { Profile } from "@garmin/fitsdk";
 import type {
   ChartData,
   ChartPoint,
@@ -11,6 +10,7 @@ import type {
 import { FitDocument } from "./document";
 import { idleJob } from "../protocol/reader";
 import { isMotionSensor, motionChart, motionPoints } from "./motion";
+import { positionCoordinates, positionFields } from "./positions";
 
 export function sensors(document: FitDocument, developer: boolean): Sensor[] {
   const output: Sensor[] = [];
@@ -341,22 +341,8 @@ export async function* mapPositions(
     { latitude: number; longitude: number; name?: number; timestamp?: number }
   >();
   for (const definition of document.index.definitions) {
-    const all = Object.values(
-      Profile.messages[definition.message]?.fields ?? {},
-    );
-    const latitude = all.find(
-      (f) => f.name === "positionLat" || f.name === "startPositionLat",
-    );
-    const longitude = all.find(
-      (f) => f.name === "positionLong" || f.name === "startPositionLong",
-    );
-    if (latitude && longitude)
-      fields.set(definition.message, {
-        latitude: latitude.num,
-        longitude: longitude.num,
-        name: all.find((f) => f.name === "name")?.num,
-        timestamp: all.find((f) => f.name === "timestamp")?.num,
-      });
+    const info = positionFields(definition.message);
+    if (info) fields.set(definition.message, info);
   }
   for (let id = 0; id < document.index.records.length; id++) {
     if (id % 512 === 0) {
@@ -367,14 +353,11 @@ export async function* mapPositions(
     const info = fields.get(record.definition.message);
     if (!info) continue;
     const cells = document.cells(id);
-    const lat = cells[String(info.latitude)]?.value;
-    const lon = cells[String(info.longitude)]?.value;
-    if (
-      typeof lat !== "number" ||
-      typeof lon !== "number" ||
-      Math.abs(lat) > 90 ||
-      Math.abs(lon) > 180
-    ) {
+    const coordinates = positionCoordinates(
+      cells[String(info.latitude)]?.value,
+      cells[String(info.longitude)]?.value,
+    );
+    if (!coordinates) {
       yield { message: record.definition.message, subfile: record.subfile };
       continue;
     }
@@ -394,8 +377,7 @@ export async function* mapPositions(
       message: record.definition.message,
       subfile: record.subfile,
       point: {
-        lat,
-        lon,
+        ...coordinates,
         time:
           record.timestamp ??
           (typeof timestamp === "number" && Number.isFinite(timestamp)

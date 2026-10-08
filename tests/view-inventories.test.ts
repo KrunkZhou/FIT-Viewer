@@ -3,7 +3,128 @@ import test from "node:test";
 import { FitDocument } from "../src/document/document";
 import { chartSensors, mapData } from "../src/document/series";
 import { createJob } from "../src/document/jobs";
-import { file, join } from "./fixtures";
+import { definition, file, join, type Field } from "./fixtures";
+import { wrapBody } from "../src/protocol/writer";
+import { positionCoordinates } from "../src/document/positions";
+
+test("GPS availability requires usable coordinates, not declared or empty fields", async () => {
+  const cases: Field[][] = [
+    [[3, 2, 120]],
+    [[0, 5, 0]],
+    [[1, 5, 0]],
+    [
+      [0, 5, 0x7fffffff],
+      [1, 5, 0],
+    ],
+    [
+      [0, 5, 0],
+      [1, 5, 0x7fffffff],
+    ],
+    [
+      [0, 5, 1200000000],
+      [1, 5, 0],
+    ],
+  ];
+  for (const fields of cases) {
+    const document = await FitDocument.open(
+      file([{ message: 20, fields }], false),
+      "no-gps.fit",
+    );
+    assert.equal(document.summary().hasMap, false, JSON.stringify(fields));
+    assert.deepEqual(await mapData(document), { tracks: [], points: [] });
+  }
+  const definitionsOnly = await FitDocument.open(
+    wrapBody(
+      definition(20, [
+        [0, 5, 0],
+        [1, 5, 0],
+      ]),
+    ),
+    "definition.fit",
+  );
+  assert.equal(definitionsOnly.summary().hasMap, false);
+  const incomplete = await FitDocument.open(
+    file(
+      [
+        { message: 20, fields: [[0, 5, 0]] },
+        { message: 20, fields: [[1, 5, 0]] },
+        {
+          message: 64000,
+          fields: [
+            [0, 5, 0],
+            [1, 5, 0],
+          ],
+        },
+      ],
+      false,
+    ),
+    "incomplete.fit",
+  );
+  assert.equal(incomplete.summary().hasMap, false);
+});
+
+test("GPS availability preserves zero coordinates, waypoints and later subfiles", async () => {
+  for (const message of [20, 32]) {
+    const document = await FitDocument.open(
+      file(
+        [
+          {
+            message,
+            fields:
+              message === 20
+                ? [
+                    [0, 5, 0],
+                    [1, 5, 0],
+                  ]
+                : [
+                    [2, 5, 0],
+                    [3, 5, 0],
+                  ],
+          },
+        ],
+        false,
+      ),
+      "gps.fit",
+    );
+    assert.equal(document.summary().hasMap, true);
+    const map = await mapData(document);
+    assert.ok(map.tracks.length || map.points.length);
+  }
+  const document = await FitDocument.open(
+    join([
+      file(
+        [
+          {
+            message: 20,
+            fields: [
+              [0, 5, 0x7fffffff],
+              [1, 5, 0x7fffffff],
+            ],
+          },
+        ],
+        false,
+      ),
+      file(
+        [
+          {
+            message: 20,
+            fields: [
+              [0, 5, 0],
+              [1, 5, 0],
+            ],
+          },
+        ],
+        false,
+      ),
+    ]),
+    "joined.fit",
+  );
+  assert.equal(document.summary().hasMap, true);
+  assert.equal((await mapData(document)).tracks.length, 1);
+  for (const value of [NaN, Infinity, -Infinity, 91])
+    assert.equal(positionCoordinates(value, 0), undefined);
+  assert.equal(positionCoordinates(0, 181), undefined);
+});
 
 test("chart inventory excludes zero and single finite samples, but retains single-packet arrays", async () => {
   const document = await FitDocument.open(

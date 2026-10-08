@@ -157,7 +157,7 @@ jobs:
             fi
             gh release create "$RELEASE_TAG" --verify-tag --target "$RELEASE_COMMIT" --draft --generate-notes \
               --title "$RELEASE_COMMIT" "${options[@]}" \
-              --notes "Windows installers are unsigned; macOS builds are ad-hoc signed and not notarized."
+              --notes "Windows installer and portable builds are unsigned; macOS builds are ad-hoc signed and not notarized."
           fi
           gh release upload "$RELEASE_TAG" ./*.exe ./*.dmg ./*.zip SHA256SUMS.txt --clobber
           gh release edit "$RELEASE_TAG" --title "$RELEASE_COMMIT" --draft=false

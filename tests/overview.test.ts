@@ -99,3 +99,27 @@ test("overview retains the issue banner and switches expose their description", 
   );
   assert.ok(markup.includes('aria-describedby="developer-mode-help"'));
 });
+
+test("overview hides GPS exports without usable positions and restores them for GPS files", async () => {
+  for (const fields of [
+    [[3, 2, 120]],
+    [
+      [0, 5, 0x7fffffff],
+      [1, 5, 0x7fffffff],
+    ],
+    [
+      [0, 5, 0],
+      [1, 5, 0],
+    ],
+  ] as import("./fixtures").Field[][]) {
+    const summary = (
+      await FitDocument.open(
+        file([{ message: 20, fields }], false),
+        "positions.fit",
+      )
+    ).summary();
+    const markup = render(summary);
+    assert.equal(markup.includes("QGIS GeoJSON"), summary.hasMap);
+    assert.equal(markup.includes("Export GPX"), summary.hasMap);
+  }
+});

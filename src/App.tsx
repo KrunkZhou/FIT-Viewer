@@ -229,7 +229,7 @@ export default function App() {
           />
         </div>
       )}
-      {visited.includes("map") && (
+      {summary.hasMap && visited.includes("map") && (
         <div className="section-view" hidden={tab !== "map"}>
           <ActivityMap client={client} download={download} />
         </div>

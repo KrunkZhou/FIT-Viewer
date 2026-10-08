@@ -82,6 +82,31 @@ test("build workflows retain portable install, typecheck and test gates", () => 
   }
 });
 
+test("Windows releases build installer and portable executables with distinct names", () => {
+  const config = JSON.parse(readFileSync("electron-builder.json", "utf8"));
+  assert.deepEqual(config.win.target, ["nsis", "portable"]);
+  assert.equal(
+    config.nsis.artifactName,
+    "FIT-Viewer-${version}-win-${arch}-setup.${ext}",
+  );
+  assert.equal(
+    config.portable.artifactName,
+    "FIT-Viewer-${version}-win-${arch}-portable.${ext}",
+  );
+  const release = workflow("desktop-release");
+  const packageStep = release.jobs.build.steps.find(
+    (step: { name?: string }) => step.name === "Package application",
+  );
+  assert.equal(
+    packageStep.run,
+    "pnpm run package:desktop --${{ matrix.platform }} --${{ matrix.arch }}",
+  );
+  const upload = release.jobs.build.steps.find(
+    (step: { name?: string }) => step.name === "Upload release files",
+  );
+  assert.ok(upload.with.path.split("\n").includes("release/*.exe"));
+});
+
 test("Intel macOS installs the pinned JavaScript pnpm CLI without a native bootstrap", () => {
   const release = workflow("desktop-release");
   const metadata = JSON.parse(readFileSync("package.json", "utf8"));
@@ -166,8 +191,14 @@ test("publishing creates exact commit tags, supports reruns, and rejects mismatc
     const assets = join(directory, "release");
     mkdirSync(bin);
     mkdirSync(assets);
-    for (const extension of ["exe", "dmg", "zip"])
-      writeFileSync(join(assets, `test.${extension}`), "fixture");
+    const filenames = [
+      "test-setup.exe",
+      "test-portable.exe",
+      "test.dmg",
+      "test.zip",
+    ];
+    for (const filename of filenames)
+      writeFileSync(join(assets, filename), "fixture");
     writeFileSync(
       join(bin, "sha256sum"),
       '#!/usr/bin/env node\nprocess.stdout.write("fixture checksum\\n");\n',
@@ -274,6 +305,10 @@ writeFileSync(stateFile, JSON.stringify(state));
         commands.some((args) => args[1] === "upload"),
         scenario.matches,
       );
+      const upload = commands.find((args) => args[1] === "upload");
+      if (upload)
+        for (const filename of filenames)
+          assert.ok(upload.includes(`./${filename}`), filename);
       assert.equal(
         commands.some((args) => args[1] === "edit"),
         scenario.matches,
