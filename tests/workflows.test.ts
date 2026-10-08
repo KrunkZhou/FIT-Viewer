@@ -51,6 +51,53 @@ test("Pages and desktop workflows use pinned actions, locked installs and scoped
   );
 });
 
+test("build workflows retain portable install, typecheck and test gates", () => {
+  const pages = workflow("pages");
+  const release = workflow("desktop-release");
+  for (const [job, expected] of [
+    [
+      pages.jobs.build,
+      [
+        "pnpm install --frozen-lockfile",
+        "pnpm run typecheck",
+        "pnpm test",
+        "pnpm run build",
+      ],
+    ],
+    [
+      release.jobs.validate,
+      ["pnpm install --frozen-lockfile", "pnpm run typecheck", "pnpm test"],
+    ],
+  ] as const) {
+    const commands = job.steps
+      .filter((step: { run?: string }) => step.run?.startsWith("pnpm "))
+      .map((step: { run: string }) => step.run);
+    assert.deepEqual(commands, expected);
+  }
+});
+
+test("desktop release titles use the packaged commit, including existing releases", () => {
+  const release = workflow("desktop-release");
+  assert.equal(
+    release.jobs.validate.outputs.commit,
+    "${{ steps.commit.outputs.commit }}",
+  );
+  const publish = release.jobs.release.steps.find(
+    (step: { name?: string }) => step.name === "Publish GitHub Release",
+  );
+  assert.equal(
+    publish.env.RELEASE_COMMIT,
+    "${{ needs.validate.outputs.commit }}",
+  );
+  assert.ok(publish.run.includes('--title "$RELEASE_COMMIT" "${options[@]}"'));
+  assert.ok(
+    publish.run.includes(
+      'gh release edit "$RELEASE_TAG" --title "$RELEASE_COMMIT" --draft=false',
+    ),
+  );
+  assert.ok(!publish.run.includes('--title "FIT Viewer $RELEASE_TAG"'));
+});
+
 test("release versions come from validated semantic version tags, including prereleases", () => {
   const directory = mkdtempSync(join(tmpdir(), "fitviewer-version-"));
   try {

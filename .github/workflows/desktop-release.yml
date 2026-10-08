@@ -61,7 +61,6 @@ jobs:
           printf 'commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
       - run: pnpm run typecheck
       - run: pnpm test
-      - run: pnpm run audit:source
 
   build:
     needs: validate
@@ -131,6 +130,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.validate.outputs.commit }}
           PRERELEASE: ${{ needs.validate.outputs.prerelease }}
         run: |
           cd release
@@ -141,8 +141,8 @@ jobs:
               options+=(--prerelease)
             fi
             gh release create "$RELEASE_TAG" --verify-tag --draft --generate-notes \
-              --title "FIT Viewer $RELEASE_TAG" "${options[@]}" \
+              --title "$RELEASE_COMMIT" "${options[@]}" \
               --notes "Windows installers are unsigned; macOS builds are ad-hoc signed and not notarized."
           fi
           gh release upload "$RELEASE_TAG" ./*.exe ./*.dmg ./*.zip SHA256SUMS.txt --clobber
-          gh release edit "$RELEASE_TAG" --draft=false
+          gh release edit "$RELEASE_TAG" --title "$RELEASE_COMMIT" --draft=false

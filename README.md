@@ -8,7 +8,6 @@ React and TypeScript implementation for inspecting local FIT files and selected 
 pnpm install
 pnpm run typecheck
 pnpm test
-pnpm run audit:source
 pnpm run build
 ```
 

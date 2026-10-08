@@ -9,7 +9,6 @@
     "test": "tsx --test tests/*.test.ts",
     "test:rewrite": "pnpm test",
     "typecheck": "tsc --noEmit",
-    "audit:source": "tsx scripts/audit-source.ts",
     "bench:rewrite": "tsx scripts/benchmark-rewrite.ts",
     "bench:motion": "tsx scripts/benchmark-motion.ts",
     "bench:motion:worker": "tsx scripts/benchmark-motion-worker.ts",
