@@ -214,8 +214,8 @@ test("device-specific settings metadata does not cross ZIP entry boundaries", as
   assert.equal(document.getFields(354, false, 1).length, 0);
 });
 
-test("ZIP charts separate overlapping activity and motion series by source", async () => {
-  const motion = (value: number) =>
+test("ZIP charts separate sources and exclude traces with fewer than ten points", async () => {
+  const motion = (value: number, count: number) =>
     file(
       [
         {
@@ -223,8 +223,8 @@ test("ZIP charts separate overlapping activity and motion series by source", asy
           fields: [
             [253, 6, 100],
             [0, 4, 0],
-            [1, 4, [0, 10, 20]],
-            [5, 8, [value, value + 1, value + 2]],
+            [1, 4, Array.from({ length: count }, (_, i) => i * 10)],
+            [5, 8, Array.from({ length: count }, (_, i) => value + i)],
           ],
         },
       ],
@@ -232,12 +232,15 @@ test("ZIP charts separate overlapping activity and motion series by source", asy
     );
   const document = await FitDocument.openSources(
     [
-      { filename: "A.fit", bytes: join([activity(3), motion(10)]) },
-      { filename: "B.fit", bytes: join([activity(2), motion(50)]) },
+      { filename: "A.fit", bytes: join([activity(10), motion(10, 10)]) },
+      { filename: "B.fit", bytes: join([activity(11), motion(50, 11)]) },
+      { filename: "C.fit", bytes: join([activity(9), motion(90, 9)]) },
+      { filename: "D.fit", bytes: join([activity(9), motion(130, 9)]) },
     ],
     "charts.zip",
   );
   const inventory = await chartSensors(document, false);
+  assert.ok(inventory.every((sensor) => sensor.source! < 2));
   const groups = groupSensors(inventory);
   const heartRate = groups.find((group) => group.sensor.key === "20:3")!;
   assert.equal(heartRate.sensor.name, "Heart Rate");
@@ -269,19 +272,19 @@ test("ZIP charts separate overlapping activity and motion series by source", asy
   });
   assert.deepEqual(
     plotted.series[selected[0]].map((point) => point.value),
-    [120, 121, 122],
+    Array.from({ length: 10 }, (_, i) => 120 + i),
   );
   assert.deepEqual(
     plotted.series[selected[1]].map((point) => point.value),
-    [120, 121],
+    Array.from({ length: 11 }, (_, i) => 120 + i),
   );
   assert.deepEqual(
     plotted.series[selected[2]].map((point) => point.value),
-    [10, 11, 12],
+    Array.from({ length: 10 }, (_, i) => 10 + i),
   );
   assert.deepEqual(
     plotted.series[selected[3]].map((point) => point.value),
-    [50, 51, 52],
+    Array.from({ length: 11 }, (_, i) => 50 + i),
   );
   const combinedExport = JSON.parse(
     await (
@@ -295,8 +298,8 @@ test("ZIP charts separate overlapping activity and motion series by source", asy
     "20:3:file:0",
     "20:3:file:1",
   ]);
-  assert.equal(combinedExport.series["20:3:file:0"].length, 3);
-  assert.equal(combinedExport.series["20:3:file:1"].length, 2);
+  assert.equal(combinedExport.series["20:3:file:0"].length, 10);
+  assert.equal(combinedExport.series["20:3:file:1"].length, 11);
   const exported = JSON.parse(
     await (
       await exportDocument(document, { format: "json", sensors: selected })
@@ -304,8 +307,25 @@ test("ZIP charts separate overlapping activity and motion series by source", asy
   );
   assert.deepEqual(
     exported.series[selected[3]].map((point: any) => point.value),
-    [50, 51, 52],
+    Array.from({ length: 11 }, (_, i) => 50 + i),
   );
+  const shortKeys = ["20:3:file:2", "165:5:file:2"];
+  assert.deepEqual(
+    (
+      await chart(document, {
+        sensors: shortKeys,
+        width: 100,
+        developer: false,
+      })
+    ).series,
+    {},
+  );
+  const shortExport = JSON.parse(
+    await (
+      await exportDocument(document, { format: "json", sensors: shortKeys })
+    ).blob.text(),
+  );
+  for (const key of shortKeys) assert.equal(shortExport.series[key].length, 9);
 });
 
 test("combined chart groups never mix different units, axes, or developer sensor meanings", () => {

@@ -11,7 +11,7 @@ import {
 } from "../src/document/series";
 import { loadFile } from "../src/document/files";
 import { createJob } from "../src/document/jobs";
-import { activity, file } from "./fixtures";
+import { activity, file, type Field } from "./fixtures";
 
 test("CSV escaping covers commas, quotes, CR/LF, arrays, and exact large integers", async () => {
   const bytes = file(
@@ -100,20 +100,13 @@ test("chart buckets preserve extrema and missing-data gaps with zero bounds", as
   const document = await FitDocument.open(
     file(
       [
-        {
+        ...Array.from({ length: 10 }, (_, i) => ({
           message: 20,
           fields: [
-            [253, 6, 0],
-            [3, 2, 123],
-          ],
-        },
-        {
-          message: 20,
-          fields: [
-            [253, 6, 1],
-            [3, 2, 124],
-          ],
-        },
+            [253, 6, i],
+            [3, 2, 123 + i],
+          ] as Field[],
+        })),
       ],
       false,
     ),

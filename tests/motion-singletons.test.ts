@@ -186,12 +186,15 @@ test("missing motion timing never fabricates samples and subfiles always split s
     ]),
     "joined.fit",
   );
-  const data = await chart(document, {
-    sensors: ["164:2"],
-    width: 100,
-    developer: true,
-  });
-  assert.deepEqual(data.series["164:2"], [
+  const points = [];
+  for await (const point of chartPoints(
+    document,
+    sensors(document, true).find((sensor) => sensor.key === "164:2")!,
+    true,
+    idleJob(),
+  ))
+    points.push(point);
+  assert.deepEqual(points, [
     { time: 0, value: 1 },
     { time: 0.01, value: null },
     { time: 0.03, value: null },
@@ -199,6 +202,11 @@ test("missing motion timing never fabricates samples and subfiles always split s
     { time: 0, value: null },
     { time: 0, value: 8 },
   ]);
+  assert.deepEqual(
+    (await chart(document, { sensors: ["164:2"], width: 100, developer: true }))
+      .series,
+    {},
+  );
   const absent = await FitDocument.open(
     file(
       [

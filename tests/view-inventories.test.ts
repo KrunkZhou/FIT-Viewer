@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { FitDocument } from "../src/document/document";
-import { chartSensors, mapData } from "../src/document/series";
+import { chart, chartSensors, mapData } from "../src/document/series";
 import { createJob } from "../src/document/jobs";
 import { definition, file, join, type Field } from "./fixtures";
 import { wrapBody } from "../src/protocol/writer";
@@ -126,28 +126,19 @@ test("GPS availability preserves zero coordinates, waypoints and later subfiles"
   assert.equal(positionCoordinates(0, 181), undefined);
 });
 
-test("chart inventory excludes zero and single finite samples, but retains single-packet arrays", async () => {
+test("chart inventory requires ten finite source points, counting zero values and packet arrays", async () => {
   const document = await FitDocument.open(
     file(
       [
-        {
+        ...Array.from({ length: 12 }, (_, i) => ({
           message: 20,
           fields: [
-            [253, 6, 0],
-            [3, 2, 100],
+            [253, 6, i],
+            [3, 2, i < 9 ? 100 : 255],
             [4, 2, 255],
-            [6, 4, 0],
-          ],
-        },
-        {
-          message: 20,
-          fields: [
-            [253, 6, 1],
-            [3, 2, 255],
-            [4, 2, 255],
-            [6, 4, 0],
-          ],
-        },
+            [6, 4, i < 10 ? 0 : 65535],
+          ] as Field[],
+        })),
         {
           message: 18,
           fields: [
@@ -160,12 +151,19 @@ test("chart inventory excludes zero and single finite samples, but retains singl
           fields: [
             [253, 6, 0],
             [0, 4, 0],
-            [1, 4, [0, 10]],
-            [5, 8, [1, 2]],
-            [6, 8, [NaN, 1]],
+            [1, 4, Array.from({ length: 12 }, (_, i) => i * 10)],
+            [5, 8, [...Array.from({ length: 10 }, (_, i) => i), NaN, NaN]],
+            [6, 8, [...Array.from({ length: 9 }, (_, i) => i), NaN, NaN, NaN]],
+            [7, 8, Array.from({ length: 12 }, () => NaN)],
           ],
         },
-        { message: 64000, fields: [[7, 6, [3, 4]]] },
+        {
+          message: 64000,
+          fields: [
+            [7, 6, Array.from({ length: 10 }, (_, i) => i)],
+            [8, 6, Array.from({ length: 9 }, (_, i) => i)],
+          ],
+        },
       ],
       false,
     ),
@@ -174,11 +172,19 @@ test("chart inventory excludes zero and single finite samples, but retains singl
   const user = await chartSensors(document, false);
   assert.ok(user.some((sensor) => sensor.key === "20:6"));
   assert.ok(user.some((sensor) => sensor.key === "165:5"));
-  for (const key of ["20:3", "20:4", "18:9", "165:6", "64000:7"])
+  for (const key of ["20:3", "20:4", "18:9", "165:6", "165:7", "64000:7"])
     assert.ok(!user.some((sensor) => sensor.key === key), key);
   const raw = await chartSensors(document, true);
   assert.ok(raw.some((sensor) => sensor.key === "64000:7"));
   assert.ok(raw.some((sensor) => sensor.key === "20:3"));
+  for (const key of ["64000:8", "165:6", "165:7"])
+    assert.ok(!raw.some((sensor) => sensor.key === key), key);
+  const plotted = await chart(document, {
+    sensors: ["20:3", "20:6", "165:5", "165:6"],
+    width: 100,
+    developer: false,
+  });
+  assert.deepEqual(Object.keys(plotted.series), ["165:5", "20:6"]);
   assert.equal(await chartSensors(document, false), user);
 });
 
@@ -186,20 +192,13 @@ test("chart inventory scanning can be cancelled without caching incomplete resul
   const document = await FitDocument.open(
     file(
       [
-        {
+        ...Array.from({ length: 10 }, (_, i) => ({
           message: 20,
           fields: [
-            [253, 6, 0],
-            [3, 2, 100],
-          ],
-        },
-        {
-          message: 20,
-          fields: [
-            [253, 6, 1],
-            [3, 2, 101],
-          ],
-        },
+            [253, 6, i],
+            [3, 2, 100 + i],
+          ] as Field[],
+        })),
       ],
       false,
     ),

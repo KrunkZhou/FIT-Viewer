@@ -55,6 +55,7 @@ export function sensors(document: FitDocument, developer: boolean): Sensor[] {
 }
 
 const sensorInventories = new WeakMap<FitDocument, Map<boolean, Sensor[]>>();
+const MIN_CHART_POINTS = 10;
 
 export async function chartSensors(
   document: FitDocument,
@@ -78,7 +79,7 @@ export async function chartSensors(
         developer,
         job,
       )) {
-        if (point.value !== null && ++count >= 2) {
+        if (point.value !== null && ++count >= MIN_CHART_POINTS) {
           usable.add(sensor.key);
           break;
         }
@@ -112,7 +113,7 @@ export async function chartSensors(
           if (typeof sample !== "number" || !Number.isFinite(sample)) continue;
           const count = (counts.get(sensor.key) ?? 0) + 1;
           counts.set(sensor.key, count);
-          if (count >= 2) {
+          if (count >= MIN_CHART_POINTS) {
             usable.add(sensor.key);
             pending.delete(sensor);
             break;
