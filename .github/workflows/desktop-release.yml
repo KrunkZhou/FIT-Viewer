@@ -2,19 +2,20 @@ name: Desktop Release
 
 on:
   push:
+    branches: ["**"]
     tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing version tag, for example v1.0.0"
-        required: true
+        description: "Optional existing version tag; leave blank to release the selected branch commit"
+        required: false
         type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: desktop-release-${{ inputs.tag || github.ref_name }}
+  group: desktop-release-${{ inputs.tag || github.sha }}
   cancel-in-progress: false
 
 defaults:
@@ -23,6 +24,7 @@ defaults:
 
 jobs:
   validate:
+    if: github.event_name != 'push' || !github.event.deleted
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
@@ -33,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ inputs.tag || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -46,19 +48,23 @@ jobs:
       - run: pnpm install --frozen-lockfile
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
-      - name: Validate release tag
+      - name: Resolve exact release commit
+        id: commit
+        env:
+          RELEASE_TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
+        run: |
+          commit="$(git rev-parse HEAD)"
+          if [ -n "$RELEASE_TAG" ]; then
+            test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$commit"
+          fi
+          printf 'commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
+      - name: Resolve release version
         id: version
         run: node scripts/release-version.mjs
         env:
-          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
-      - name: Verify tag matches checkout
-        id: commit
-        env:
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
-        run: |
-          commit="$(git rev-parse HEAD)"
-          test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$commit"
-          printf 'commit=%s\n' "$commit" >> "$GITHUB_OUTPUT"
+          RELEASE_TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
+          RELEASE_COMMIT: ${{ steps.commit.outputs.commit }}
+          RELEASE_RUN_NUMBER: ${{ github.run_number }}
       - run: pnpm run typecheck
       - run: pnpm test
 
@@ -135,12 +141,17 @@ jobs:
         run: |
           cd release
           sha256sum ./*.exe ./*.dmg ./*.zip > SHA256SUMS.txt
+          if [[ "$RELEASE_TAG" == commit-* ]] && ! gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" --silent; then
+            gh api --method POST "repos/$GH_REPO/git/refs" \
+              -f "ref=refs/tags/$RELEASE_TAG" -f "sha=$RELEASE_COMMIT" --silent
+          fi
+          test "$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq '.sha')" = "$RELEASE_COMMIT"
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             options=()
             if [ "$PRERELEASE" = "true" ]; then
-              options+=(--prerelease)
+              options+=(--prerelease --latest=false)
             fi
-            gh release create "$RELEASE_TAG" --verify-tag --draft --generate-notes \
+            gh release create "$RELEASE_TAG" --verify-tag --target "$RELEASE_COMMIT" --draft --generate-notes \
               --title "$RELEASE_COMMIT" "${options[@]}" \
               --notes "Windows installers are unsigned; macOS builds are ad-hoc signed and not notarized."
           fi
