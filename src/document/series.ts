@@ -9,7 +9,13 @@ import type {
 } from "../model";
 import { FitDocument } from "./document";
 import { idleJob } from "../protocol/reader";
-import { isMotionSensor, motionChart, motionPoints } from "./motion";
+import {
+  isMotionSensor,
+  motionChart,
+  motionPoints,
+  motionStatistics,
+} from "./motion";
+import { SampleStatistics } from "./sample-statistics";
 import { positionCoordinates, positionFields } from "./positions";
 
 export function sensors(document: FitDocument, developer: boolean): Sensor[] {
@@ -65,67 +71,64 @@ export async function chartSensors(
   const cached = sensorInventories.get(document)?.get(developer);
   if (cached) return cached;
   const candidates = sensors(document, developer);
-  const usable = new Set<string>();
+  const statistics = new Map<string, SampleStatistics>();
   const groups = new Map<
     string,
     { message: number; source?: number; fields: Sensor[] }
   >();
   for (const sensor of candidates) {
-    if (isMotionSensor(sensor)) {
-      let count = 0;
-      for await (const point of motionPoints(
-        document,
-        sensor,
-        developer,
-        job,
-      )) {
-        if (point.value !== null && ++count >= MIN_CHART_POINTS) {
-          usable.add(sensor.key);
-          break;
-        }
-      }
-    } else {
-      const message = sensor.message!;
-      const key = `${message}:${sensor.source ?? "all"}`;
-      const group = groups.get(key) ?? {
-        message,
-        source: sensor.source,
-        fields: [],
-      };
-      group.fields.push(sensor);
-      groups.set(key, group);
-    }
-    await job.yield();
+    const message = sensor.message!;
+    const key = `${message}:${sensor.source ?? "all"}:${isMotionSensor(sensor)}`;
+    const group = groups.get(key) ?? {
+      message,
+      source: sensor.source,
+      fields: [],
+    };
+    group.fields.push(sensor);
+    groups.set(key, group);
   }
-  // Count only enough finite source samples to establish a useful series.
   for (const { message, source, fields } of groups.values()) {
-    const counts = new Map<string, number>();
-    const pending = new Set(fields);
+    if (isMotionSensor(fields[0])) {
+      const counts = await motionStatistics(document, fields, developer, job);
+      fields.forEach((field, i) => statistics.set(field.key, counts[i]));
+      continue;
+    }
+    const counts = fields.map(() => new SampleStatistics());
     let index = 0;
-    for (const id of document.recordIds(message, source)) {
+    const ids = document.recordIds(message, source);
+    for (const id of ids) {
       const record = document.index.records[id];
       const cells = document.cells(id, !developer);
-      for (const sensor of pending) {
+      for (let field = 0; field < fields.length; field++) {
+        const sensor = fields[field];
         if (sensor.axis === "time" && record.timestamp === undefined) continue;
         const key = sensor.field!;
-        const value = cells[key]?.[developer ? "raw" : "value"];
-        for (const sample of Array.isArray(value) ? value : [value]) {
-          if (typeof sample !== "number" || !Number.isFinite(sample)) continue;
-          const count = (counts.get(sensor.key) ?? 0) + 1;
-          counts.set(sensor.key, count);
-          if (count >= MIN_CHART_POINTS) {
-            usable.add(sensor.key);
-            pending.delete(sensor);
-            break;
-          }
-        }
+        const cell = cells[key];
+        if (!cell) continue;
+        const value = cell[developer ? "raw" : "value"];
+        const samples = Array.isArray(value) ? value : [value];
+        const interpreted = Array.isArray(cell.value)
+          ? cell.value
+          : [cell.value];
+        for (let i = 0; i < samples.length; i++)
+          if (interpreted[i] !== null && interpreted[i] !== undefined)
+            counts[field].add(samples[i]);
       }
-      if (!pending.size) break;
-      if (++index % 128 === 0) await job.yield();
+      if (++index % 128 === 0) {
+        job.progress(index, ids.length, "Counting chart samples");
+        await job.yield();
+      }
     }
+    fields.forEach((field, i) => statistics.set(field.key, counts[i]));
     await job.yield();
   }
-  const output = candidates.filter((sensor) => usable.has(sensor.key));
+  const output = candidates.flatMap((sensor) => {
+    const stats = statistics.get(sensor.key)!;
+    return stats.count >= MIN_CHART_POINTS && stats.minimum < stats.maximum
+      ? [{ ...sensor, pointCount: stats.count }]
+      : [];
+  });
+  await job.yield();
   let modes = sensorInventories.get(document);
   if (!modes) sensorInventories.set(document, (modes = new Map()));
   modes.set(developer, output);

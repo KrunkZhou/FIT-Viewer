@@ -339,6 +339,7 @@ export default function Charts({
           {available.map((sensor) => (
             <label
               className="viewer-sensor-option"
+              title={`${sensor.name}\n${sensor.pointCount?.toLocaleString() ?? "0"} valid data points (before downsampling)`}
               data-selected={selected.includes(sensor.key)}
               key={sensor.key}
             >

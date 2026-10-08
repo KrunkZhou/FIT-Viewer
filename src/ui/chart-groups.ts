@@ -43,5 +43,15 @@ export function groupSensors(sensors: Sensor[]): ChartGroup[] {
     }
     group.members.push(sensor);
   }
-  return [...groups.values()];
+  return [...groups.values()].map((group) => ({
+    ...group,
+    sensor: {
+      ...group.sensor,
+      pointCount: group.members.every(
+        (member) => member.pointCount !== undefined,
+      )
+        ? group.members.reduce((count, member) => count + member.pointCount!, 0)
+        : undefined,
+    },
+  }));
 }

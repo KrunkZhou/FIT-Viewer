@@ -153,6 +153,7 @@ export interface Sensor {
   source?: number;
   message?: number;
   field?: string;
+  pointCount?: number;
 }
 export interface ChartPoint {
   time: number;
@@ -210,7 +211,7 @@ export interface ExportResult {
 export type RequestPayload = (
   | {
       kind: "open";
-      file: File;
+      file: import("./document/input").DocumentInput;
       filename?: string;
       limit: number;
     }

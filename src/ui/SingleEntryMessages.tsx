@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Download } from "lucide-react";
 import type { DocumentSummary, ExportQuery, SingleEntryView } from "../model";
 import type { DocumentClient } from "../document/client";
-import { displayCell } from "./format";
+import { displayCell, fieldTooltip } from "./format";
 import { IconButton } from "./controls";
 import { TableScroll } from "./TableScroll";
 
@@ -85,7 +85,7 @@ export function SingleEntryMessages({
                         <th
                           key={field.key}
                           scope="col"
-                          title={`Field ${field.key}${field.description ? `: ${field.description}` : ""}`}
+                          title={fieldTooltip(field)}
                         >
                           {field.name}
                           {field.units && (

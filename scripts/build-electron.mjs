@@ -13,8 +13,9 @@ await cp("dist", "desktop/dist", {
   filter: (path) => !path.endsWith(".map"),
 });
 await build({
-  entryPoints: ["electron/main.ts"],
-  outfile: "desktop/main.cjs",
+  entryPoints: ["electron/main.ts", "electron/preload.ts"],
+  outdir: "desktop",
+  outExtension: { ".js": ".cjs" },
   bundle: true,
   platform: "node",
   format: "cjs",

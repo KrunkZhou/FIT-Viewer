@@ -5,7 +5,8 @@ import { resolve } from "node:path";
 import { app, type BrowserWindow } from "electron";
 import { createWindow, registerBundle } from "./app";
 import { activity } from "../tests/fixtures";
-import { checkRenderer } from "./smoke-renderer";
+import { checkDesktopSelection, checkRenderer } from "./smoke-renderer";
+import { OpenFiles } from "./open-files";
 
 const profile = resolve(".cache/electron-smoke-profile");
 mkdirSync(profile, { recursive: true });
@@ -21,9 +22,32 @@ let smokeWindow: BrowserWindow | undefined;
 app
   .whenReady()
   .then(async () => {
-    await registerBundle(resolve("desktop/dist"));
-    const window = await createWindow(false);
+    const files = new OpenFiles();
+    const first = resolve(".cache/desktop-first.fit");
+    const second = resolve(".cache/desktop-second.fit");
+    await writeFile(first, activity(32));
+    await writeFile(second, activity(32));
+    await registerBundle(resolve("desktop/dist"), files.access);
+    files.open([first, second]);
+    const window = await createWindow(
+      false,
+      resolve("desktop/preload.cjs"),
+      (window) => files.attach(window),
+    );
     smokeWindow = window;
+    const initial = await window.webContents.executeJavaScript(
+      `(${checkDesktopSelection.toString()})("2 files", 2)`,
+    );
+    await window.webContents.executeJavaScript(
+      `(${checkRenderer.toString()})()`,
+    );
+    files.open([second]);
+    const replacement = await window.webContents.executeJavaScript(
+      `(${checkDesktopSelection.toString()})("desktop-second.fit", 1)`,
+    );
+    await window.webContents.executeJavaScript(
+      `(${checkRenderer.toString()})()`,
+    );
     const bytes = Array.from(activity(32));
     const result = await window.webContents.executeJavaScript(
       `(${checkRenderer.toString()})(${JSON.stringify(bytes)})`,
@@ -35,7 +59,9 @@ app
     assert.equal(result.nodeAccess, "undefined");
     const image = await window.webContents.capturePage();
     await writeFile(".cache/electron-smoke.png", image.toPNG());
-    console.log(`Desktop smoke passed: ${JSON.stringify(result)}`);
+    console.log(
+      `Desktop smoke passed: ${JSON.stringify({ ...result, initial, replacement })}`,
+    );
     clearTimeout(timeout);
     window.destroy();
     app.exit(0);

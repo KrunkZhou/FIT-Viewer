@@ -4,6 +4,7 @@
   "directories": { "app": "desktop", "output": "release" },
   "files": [
     "main.cjs",
+    "preload.cjs",
     "package.json",
     "dist/**/*",
     "!dist/**/*.map",
@@ -13,14 +14,24 @@
   "npmRebuild": false,
   "artifactName": "FIT-Viewer-${version}-${os}-${arch}.${ext}",
   "mac": {
+    "icon": "build/icon.icns",
+    "fileAssociations": [
+      {
+        "ext": "fit",
+        "name": "FIT activity",
+        "role": "Viewer",
+        "rank": "Alternate"
+      }
+    ],
     "category": "public.app-category.utilities",
     "target": ["dmg", "zip"],
     "identity": "-",
     "hardenedRuntime": false,
     "notarize": false
   },
-  "win": { "target": ["nsis", "portable"] },
+  "win": { "target": ["nsis", "portable"], "icon": "build/icon.ico" },
   "nsis": {
+    "include": "build/installer.nsh",
     "artifactName": "FIT-Viewer-${version}-win-${arch}-setup.${ext}",
     "oneClick": false,
     "perMachine": false,

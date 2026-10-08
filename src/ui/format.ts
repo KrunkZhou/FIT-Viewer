@@ -1,6 +1,16 @@
 import type { DisplayValue, FieldInfo } from "../model";
 const formats = new Map<number, Intl.NumberFormat>();
 
+export function fieldTooltip(field: FieldInfo): string {
+  return [
+    `Field ID: ${field.id}${field.developer ? ` (developer ${field.key.split(":")[0].slice(1)})` : ""}`,
+    `${field.type}${field.units ? ` (${field.units})` : ""}${field.unknown ? " - undocumented" : ""}`,
+    field.description,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export function displayCell(
   value: DisplayValue | undefined,
   field: FieldInfo,

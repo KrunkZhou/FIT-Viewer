@@ -10,6 +10,7 @@ import type {
 } from "../model";
 import { readValue, valid, WIDTHS } from "../protocol/binary";
 import type { FitDocument } from "./document";
+import { SampleStatistics } from "./sample-statistics";
 
 export function isMotionSensor(sensor: Sensor): boolean {
   const [keyMessage, keyField] = sensor.key.split(":");
@@ -117,6 +118,41 @@ class Timeline {
     this.missing = false;
     return gap;
   }
+}
+export async function motionStatistics(
+  document: FitDocument,
+  sensors: Sensor[],
+  developer: boolean,
+  job: Job,
+): Promise<SampleStatistics[]> {
+  const first = sensors[0];
+  const message = first.message ?? Number(first.key.split(":")[0]);
+  const inventory = document.getFields(message, developer, first.source);
+  const fields = sensors.map((sensor) =>
+    inventory.find((field) => field.key === sensor.field)!,
+  );
+  const statistics = sensors.map(() => new SampleStatistics());
+  let index = 0;
+  const count = document.recordIds(message, first.source).length;
+  // Decode all axes in a packet together, without retaining expanded samples.
+  for (const packet of packets(
+    document,
+    message,
+    fields,
+    developer,
+    first.source,
+  )) {
+    for (let axis = 0; axis < fields.length; axis++)
+      for (let i = 0; i < packet.axes[axis].length; i++)
+        if (packet.times[i] !== undefined)
+          statistics[axis].add(packet.axes[axis][i]);
+    if (++index % 64 === 0) {
+      job.progress(index, count, "Counting motion samples");
+      await job.yield();
+    }
+  }
+  await job.yield();
+  return statistics;
 }
 export async function* motionPoints(
   document: FitDocument,

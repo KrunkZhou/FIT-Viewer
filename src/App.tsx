@@ -13,6 +13,7 @@ import {
   ClipboardList,
   Download,
   File,
+  FolderOpen,
   LayoutDashboard,
   LoaderCircle,
   Map,
@@ -22,6 +23,8 @@ import {
   X,
 } from "lucide-react";
 import { DocumentClient } from "./document/client";
+import type { DocumentInput } from "./document/input";
+import { captureDrop, collectDrop } from "./ui/file-drop";
 import { Downloads } from "./ui/download";
 import type { DocumentSummary, ExportQuery } from "./model";
 import { Overview } from "./ui/Overview";
@@ -40,9 +43,10 @@ const ActivityMap = lazy(() => import("./ui/Map"));
 type Tab = "overview" | "messages" | "map" | "chart" | "diagnostics";
 
 export default function App() {
+  const desktop = typeof window === "undefined" ? undefined : window.fitDesktop;
   const client = useMemo(() => new DocumentClient(), []);
   const [summary, setSummary] = useState<DocumentSummary>();
-  const [selectedFile, setSelectedFile] = useState<File>();
+  const [selectedName, setSelectedName] = useState<string>();
   const [workspace, setWorkspace] = useState<DocumentSummary>();
   const [source, setSource] = useState("");
   const [developer, setDeveloper] = useState(false);
@@ -72,6 +76,7 @@ export default function App() {
   const [remember, setRemember] = useState(false);
   const [target, setTarget] = useState<{ message: number; record: number }>();
   const fileInput = useRef<HTMLInputElement>(null);
+  const folderInput = useRef<HTMLInputElement>(null);
   const downloads = useRef(new Downloads());
   const job = useRef<AbortController | undefined>(undefined);
   const generation = useRef(0);
@@ -93,11 +98,20 @@ export default function App() {
       previous.includes(tab) ? previous : [...previous, tab],
     );
   }, [tab]);
+  useEffect(
+    () => window.fitDesktop?.onOpen((selection) => void open(selection)),
+    [client],
+  );
   const updateProgress = (completed: number, total: number, phase: string) =>
     setProgress({ value: total ? completed / total : 0, phase });
-  async function open(file: File) {
+  async function open(
+    input:
+      | DocumentInput
+      | ((signal: AbortSignal, limit: number) => Promise<DocumentInput>),
+  ) {
     const id = ++generation.current;
     job.current?.abort();
+    client.destroy();
     downloads.current.clear();
     const controller = new AbortController();
     job.current = controller;
@@ -108,16 +122,32 @@ export default function App() {
     setNotice("");
     setSummary(undefined);
     setCsvQuery(undefined);
-    setSelectedFile(file);
+    setSelectedName(
+      typeof input === "function" ? "Folder selection" : input.name,
+    );
     setProgress({ value: 0, phase: "Opening file" });
     setWorkspace(undefined);
     setSource("");
+    let desktopUrls: string[] = [];
     try {
       const config = Number(import.meta.env.VITE_MAX_FILE_MIB) || 512;
+      const file =
+        typeof input === "function"
+          ? await input(controller.signal, config * 1048576)
+          : input;
+      if ("files" in file)
+        desktopUrls = file.files.flatMap((entry) =>
+          "url" in entry ? [entry.url] : [],
+        );
+      if (id !== generation.current || controller.signal.aborted) return;
+      setSelectedName(file.name);
       const result = await client.open(file, {
         limit: config * 1048576,
         signal: controller.signal,
-        progress: updateProgress,
+        progress: (completed, total, phase) => {
+          if (id === generation.current && !controller.signal.aborted)
+            updateProgress(completed, total, phase);
+        },
       });
       if (id !== generation.current || controller.signal.aborted) return;
       setWorkspace(result);
@@ -129,6 +159,7 @@ export default function App() {
       if (id === generation.current && (error as Error).name !== "AbortError")
         setError((error as Error).message);
     } finally {
+      window.fitDesktop?.release(desktopUrls);
       if (id === generation.current) {
         setBusy(false);
         setProgress(undefined);
@@ -319,7 +350,14 @@ export default function App() {
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => {
         event.preventDefault();
-        if (event.dataTransfer.files[0]) void open(event.dataTransfer.files[0]);
+        const drop = captureDrop(event.dataTransfer);
+        if (drop.files.length || drop.entries.length)
+          void open((signal, limit) =>
+            collectDrop(drop, signal, limit, (count) => {
+              if (!signal.aborted)
+                setProgress({ value: 0, phase: `Finding FIT files: ${count}` });
+            }),
+          );
       }}
     >
       <input
@@ -333,13 +371,29 @@ export default function App() {
           event.target.value = "";
         }}
       />
+      {desktop && (
+        <input
+          ref={folderInput}
+          type="file"
+          multiple
+          {...{ webkitdirectory: "" }}
+          className="file-input"
+          aria-label="Open FIT folder"
+          onChange={(event) => {
+            const files = Array.from(event.target.files ?? []);
+            event.target.value = "";
+            if (files.length)
+              void open((signal, limit) =>
+                collectDrop({ entries: [], files }, signal, limit, () => {}),
+              );
+          }}
+        />
+      )}
       <main className="viewer-main">
         <header className="viewer-file-bar">
           <div className="viewer-file">
             <File size={18} />
-            <h2>
-              {summary?.filename ?? selectedFile?.name ?? "No file selected"}
-            </h2>
+            <h2>{summary?.filename ?? selectedName ?? "No file selected"}</h2>
             {workspace && workspace.sources.length > 1 && (
               <select
                 aria-label="Source file"
@@ -405,6 +459,14 @@ export default function App() {
               <Upload size={15} />
               <span>Open FIT file</span>
             </button>
+            {desktop && (
+              <IconButton
+                title="Open FIT folder"
+                onClick={() => folderInput.current?.click()}
+              >
+                <FolderOpen size={18} />
+              </IconButton>
+            )}
           </div>
         </header>
         {progress && (

@@ -606,6 +606,10 @@ th .viewer-icon-button {
   min-height: 30px;
   font-size: 12px;
 }
+.viewer-map-legend label:hover,
+.viewer-map-legend label:focus-within {
+  background: var(--viewer-accent-soft);
+}
 .viewer-map-legend label > span:last-child {
   overflow-wrap: anywhere;
   min-width: 0;

@@ -2,6 +2,7 @@ import { app, BrowserWindow, net, protocol, session, shell } from "electron";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import type { FileAccess } from "./file-access";
 import {
   APP_URL,
   appNavigation,
@@ -24,11 +25,14 @@ protocol.registerSchemesAsPrivileged([
 
 export async function registerBundle(
   root = join(app.getAppPath(), "dist"),
+  access?: FileAccess,
 ): Promise<void> {
   const csp = contentSecurityPolicy(
     await readFile(join(root, "index.html"), "utf8"),
   );
   protocol.handle("fitviewer", async (request) => {
+    if (access && new URL(request.url).pathname.startsWith("/import/"))
+      return access.read(request, (url) => net.fetch(url));
     const path = bundlePath(request.url, root);
     if (!path || !["GET", "HEAD"].includes(request.method))
       return new Response("Not found", { status: 404 });
@@ -51,9 +55,14 @@ export async function registerBundle(
   session.defaultSession.setPermissionCheckHandler(() => false);
 }
 
-export async function createWindow(show = true): Promise<BrowserWindow> {
+export async function createWindow(
+  show = true,
+  preload = join(app.getAppPath(), "preload.cjs"),
+  configure?: (window: BrowserWindow) => void,
+): Promise<BrowserWindow> {
   const window = new BrowserWindow({
     title: "FIT Viewer",
+    icon: join(app.getAppPath(), "dist/icons/icon-512.png"),
     width: 1366,
     height: 900,
     minWidth: 390,
@@ -66,8 +75,10 @@ export async function createWindow(show = true): Promise<BrowserWindow> {
       contextIsolation: true,
       sandbox: true,
       webSecurity: true,
+      preload,
     },
   });
+  configure?.(window);
   const openExternal = (url: string) => {
     if (externalLink(url)) void shell.openExternal(url).catch(console.error);
   };

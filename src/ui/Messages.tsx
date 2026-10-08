@@ -16,7 +16,7 @@ import type {
   TableQuery,
 } from "../model";
 import type { DocumentClient } from "../document/client";
-import { displayCell } from "./format";
+import { displayCell, fieldTooltip } from "./format";
 import { FIT_EPOCH } from "../protocol/time";
 import { SingleEntryMessages } from "./SingleEntryMessages";
 import { TableScroll } from "./TableScroll";
@@ -185,7 +185,12 @@ export function Messages({
                 onClick={() => setSelected(-1)}
               >
                 <span className="viewer-tab-label">Single-entry messages</span>
-                <span className="viewer-tab-count">{singletons.length}</span>
+                <span
+                  className="viewer-tab-count"
+                  title={`Message IDs: ${singletons.map((message) => message.id).join(", ")}`}
+                >
+                  {singletons.length}
+                </span>
               </button>
             </div>
           )}
@@ -206,6 +211,12 @@ export function Messages({
                 onClick={() => setSelected(message.id)}
               >
                 <span className="viewer-tab-label">{message.name}</span>
+                <span
+                  className="viewer-tab-count"
+                  title={`Message ID: ${message.id}`}
+                >
+                  1
+                </span>
               </button>
             ))}
           </div>
@@ -221,7 +232,10 @@ export function Messages({
               onClick={() => setSelected(message.id)}
             >
               <span className="viewer-tab-label">{message.name}</span>
-              <span className="viewer-tab-count">
+              <span
+                className="viewer-tab-count"
+                title={`Message ID: ${message.id}`}
+              >
                 {message.count.toLocaleString()}
               </span>
             </button>
@@ -284,10 +298,7 @@ export function Messages({
                           <th scope="col">Source file</th>
                         )}
                         {data?.fields.map((field) => (
-                          <th
-                            key={field.key}
-                            title={`${field.description ?? field.type}\nField ${field.key}${field.unknown ? " (undocumented)" : ""}`}
-                          >
+                          <th key={field.key} title={fieldTooltip(field)}>
                             <span>
                               {field.name}
                               {field.units && (

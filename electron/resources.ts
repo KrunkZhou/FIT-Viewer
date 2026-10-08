@@ -19,6 +19,7 @@ export function bundlePath(url: string, root: string): string | undefined {
     if (
       entry !== "/index.html" &&
       entry !== "/THIRD_PARTY_NOTICES.txt" &&
+      !/^\/icons\/(?:icon-\d+\.png|favicon\.ico)$/.test(entry) &&
       !entry.startsWith("/assets/")
     )
       return;

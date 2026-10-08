@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type HTMLAttributes } from "react";
 import {
   Download,
   FileJson2,
@@ -19,6 +19,7 @@ import type { MapData, MapPoint, ExportQuery, Position } from "../model";
 import type { DocumentClient } from "../document/client";
 import { IconButton, Toggle } from "./controls";
 import { FIT_EPOCH } from "../protocol/time";
+import { pointDetails, routeDetails } from "./map-details";
 import "leaflet/dist/leaflet.css";
 
 const COLORS = ["#176856", "#397ad1", "#c74662", "#9765b8", "#b57b0b"];
@@ -31,6 +32,10 @@ const POINT_TYPES: { kind: MapPoint["kind"]; name: string }[] = [
 ];
 const pointName = (point: MapPoint) =>
   point.name ?? POINT_TYPES.find((type) => type.kind === point.kind)!.name;
+type Highlight =
+  | { kind: "route"; index: number }
+  | { kind: "point"; index: number }
+  | { kind: "type"; type: MapPoint["kind"] };
 
 function Bounds({ data }: { data: MapData }) {
   const map = useMap();
@@ -65,6 +70,18 @@ export default function ActivityMap({
   const [selected, setSelected] = useState<Position>();
   const [hiddenRoutes, setHiddenRoutes] = useState<number[]>([]);
   const [hiddenPoints, setHiddenPoints] = useState<number[]>([]);
+  const [hovered, setHovered] = useState<Highlight>();
+  const [focused, setFocused] = useState<Highlight>();
+  const highlighted = legend ? (hovered ?? focused) : undefined;
+  const legendEvents = (item: Highlight): HTMLAttributes<HTMLLabelElement> => ({
+    onMouseEnter: () => setHovered(item),
+    onMouseLeave: () => setHovered(undefined),
+    onFocus: () => setFocused(item),
+    onBlur: (event) => {
+      if (!event.currentTarget.contains(event.relatedTarget))
+        setFocused(undefined);
+    },
+  });
   const [pointTypes, setPointTypes] = useState<MapPoint["kind"][]>([
     "start",
     "finish",
@@ -98,6 +115,24 @@ export default function ActivityMap({
     route === undefined || !hiddenRoutes.includes(route);
   const routeName = (route: number) =>
     data?.routeNames?.[route] ?? `Route ${route + 1}`;
+  const trackPositions = useMemo(
+    () =>
+      data?.tracks.map((track) =>
+        track.map((point) => [point.lat, point.lon] as [number, number]),
+      ) ?? [],
+    [data],
+  );
+  const routeDescriptions = useMemo(
+    () =>
+      data?.tracks.map((track, route) =>
+        routeDetails(track, routeName(route)),
+      ) ?? [],
+    [data],
+  );
+  const pointVisible = (point: MapPoint, index: number) =>
+    routeVisible(point.route) &&
+    pointTypes.includes(point.kind) &&
+    !hiddenPoints.includes(index);
   const visible = useMemo(
     () =>
       data && {
@@ -190,9 +225,7 @@ export default function ActivityMap({
                   routeVisible(route) && (
                     <Polyline
                       key={route}
-                      positions={track.map(
-                        (p) => [p.lat, p.lon] as [number, number],
-                      )}
+                      positions={trackPositions[route]}
                       pathOptions={{
                         color: COLORS[route % COLORS.length],
                         weight: 3,
@@ -238,9 +271,7 @@ export default function ActivityMap({
               )}
               {data.points.map(
                 (point, i) =>
-                  routeVisible(point.route) &&
-                  pointTypes.includes(point.kind) &&
-                  !hiddenPoints.includes(i) && (
+                  pointVisible(point, i) && (
                     <CircleMarker
                       key={i}
                       center={[point.lat, point.lon]}
@@ -285,6 +316,39 @@ export default function ActivityMap({
                     </CircleMarker>
                   ),
               )}
+              {highlighted?.kind === "route" &&
+                routeVisible(highlighted.index) && (
+                  <Polyline
+                    className="map-highlight-route"
+                    positions={trackPositions[highlighted.index]}
+                    interactive={false}
+                    pathOptions={{
+                      color: "#f59e0b",
+                      weight: 7,
+                      opacity: 0.95,
+                    }}
+                  />
+                )}
+              {data.points.map(
+                (point, i) =>
+                  pointVisible(point, i) &&
+                  ((highlighted?.kind === "point" && highlighted.index === i) ||
+                    (highlighted?.kind === "type" &&
+                      highlighted.type === point.kind)) && (
+                    <CircleMarker
+                      key={`highlight-${i}`}
+                      className="map-highlight-point"
+                      center={[point.lat, point.lon]}
+                      radius={point.kind === "distance" ? 17 : 11}
+                      interactive={false}
+                      pathOptions={{
+                        color: "#f59e0b",
+                        weight: 4,
+                        fill: false,
+                      }}
+                    />
+                  ),
+              )}
               <ScaleControl />
             </MapContainer>
           )}
@@ -305,11 +369,15 @@ export default function ActivityMap({
             </IconButton>
           </div>
           <div className="viewer-map-legend-scroll">
-            {data && data.tracks.length > 1 && (
+            {data && data.tracks.length > 0 && (
               <section>
                 <h3>Routes</h3>
                 {data.tracks.map((_, route) => (
-                  <label key={route}>
+                  <label
+                    key={route}
+                    title={routeDescriptions[route]}
+                    {...legendEvents({ kind: "route", index: route })}
+                  >
                     <input
                       type="checkbox"
                       checked={routeVisible(route)}
@@ -320,9 +388,7 @@ export default function ActivityMap({
                       className="map-route-swatch"
                       style={{ background: COLORS[route % COLORS.length] }}
                     />
-                    <span className="map-route-name" title={routeName(route)}>
-                      {routeName(route)}
-                    </span>
+                    <span className="map-route-name">{routeName(route)}</span>
                   </label>
                 ))}
               </section>
@@ -332,7 +398,11 @@ export default function ActivityMap({
               {POINT_TYPES.filter((type) =>
                 data?.points.some((p) => p.kind === type.kind),
               ).map((type) => (
-                <label key={type.kind}>
+                <label
+                  key={type.kind}
+                  title={`${type.name}\n${data?.points.filter((point) => point.kind === type.kind).length ?? 0} points`}
+                  {...legendEvents({ kind: "type", type: type.kind })}
+                >
                   <input
                     type="checkbox"
                     checked={pointTypes.includes(type.kind)}
@@ -353,7 +423,17 @@ export default function ActivityMap({
                 (point, i) =>
                   routeVisible(point.route) &&
                   pointTypes.includes(point.kind) && (
-                    <label key={i}>
+                    <label
+                      key={i}
+                      title={pointDetails(
+                        point,
+                        pointName(point),
+                        point.route === undefined
+                          ? undefined
+                          : routeName(point.route),
+                      )}
+                      {...legendEvents({ kind: "point", index: i })}
+                    >
                       <input
                         type="checkbox"
                         checked={!hiddenPoints.includes(i)}

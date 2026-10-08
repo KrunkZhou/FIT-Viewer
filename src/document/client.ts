@@ -6,6 +6,7 @@ import type {
   WorkerRequest,
   WorkerResponse,
 } from "../model";
+import type { DocumentInput } from "./input";
 import {
   validationStartDocument,
   validationValue,
@@ -84,7 +85,7 @@ export class DocumentClient {
     this.pending.clear();
   }
   open(
-    file: File,
+    file: DocumentInput,
     options: {
       limit?: number;
       signal?: AbortSignal;

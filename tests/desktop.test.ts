@@ -121,7 +121,8 @@ function delayedRenderer(populateRows: boolean) {
       return null;
     },
     querySelectorAll(selector: string) {
-      if (selector === "table tbody tr") return Array.from({ length: rows });
+      if (selector === ".viewer-message-table table tbody tr")
+        return Array.from({ length: rows });
       if (selector === '[role="tab"]')
         return [
           {
