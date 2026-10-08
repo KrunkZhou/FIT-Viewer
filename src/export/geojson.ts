@@ -58,6 +58,9 @@ export async function exportGeoJson(
         id: point.record,
         geometry: { type: "Point", coordinates: [point.lon, point.lat] },
         properties: {
+          ...(document.sources.length > 1
+            ? { source_file: document.sourceName(entry.subfile) }
+            : {}),
           kind,
           record_index: point.record,
           message_id: entry.message,

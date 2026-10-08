@@ -45,7 +45,7 @@ export function Diagnostics({
             onClick={() => download({ format: "fit" })}
           >
             <Download size={16} />
-            Download repaired FIT
+            Download repaired {summary.sources.length > 1 ? "ZIP" : "FIT"}
           </button>
         )}
       </div>
@@ -57,8 +57,24 @@ export function Diagnostics({
               <strong>{issue.code.replace(/-/g, " ")}</strong>
               <p>{issue.message}</p>
               <span className="viewer-muted">
-                File {issue.subfile + 1} · Bytes {issue.offset.toLocaleString()}
-                -{issue.end.toLocaleString()} ·{" "}
+                {summary.sources[
+                  issue.source ?? summary.subfiles[issue.subfile]?.source ?? 0
+                ]?.filename ?? `File ${issue.subfile + 1}`}{" "}
+                · Bytes{" "}
+                {(
+                  issue.offset -
+                  (summary.sources[
+                    issue.source ?? summary.subfiles[issue.subfile]?.source ?? 0
+                  ]?.start ?? 0)
+                ).toLocaleString()}
+                -
+                {(
+                  issue.end -
+                  (summary.sources[
+                    issue.source ?? summary.subfiles[issue.subfile]?.source ?? 0
+                  ]?.start ?? 0)
+                ).toLocaleString()}{" "}
+                ·{" "}
                 {issue.repair === "none"
                   ? "Original data retained"
                   : `Repair: ${issue.repair}`}
@@ -67,7 +83,7 @@ export function Diagnostics({
             {issue.record !== undefined && (
               <IconButton
                 title="View record"
-                onClick={() => inspect(20, issue.record!)}
+                onClick={() => inspect(issue.messageId ?? 20, issue.record!)}
               >
                 <ArrowRight size={16} />
               </IconButton>
@@ -101,7 +117,9 @@ export function Diagnostics({
         {summary.subfiles.map((file) => (
           <dl className="viewer-header-details" key={file.index}>
             <dt>File</dt>
-            <dd>{file.index + 1}</dd>
+            <dd>
+              {summary.sources[file.source ?? 0]?.filename} ({file.index + 1})
+            </dd>
             <dt>Header bytes</dt>
             <dd>{file.headerSize}</dd>
             <dt>Declared data bytes</dt>

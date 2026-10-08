@@ -16,28 +16,39 @@ export function sensors(document: FitDocument, developer: boolean): Sensor[] {
   const output: Sensor[] = [];
   for (const message of document.messageInfo) {
     if (!message.known && !developer) continue;
-    const hasTime = (document.index.messages.get(message.id) ?? []).some(
-      (id) => document.index.records[id].timestamp !== undefined,
-    );
-    if (message.id !== 20 && !hasTime && !developer) continue;
-    for (const field of document.getFields(message.id, developer)) {
-      if (
-        field.id === 253 ||
-        field.type === "string" ||
-        field.type === "dateTime" ||
-        field.type === "localDateTime" ||
-        field.bitmask ||
-        ((message.id === 164 || message.id === 165) &&
-          (field.id === 0 || field.id === 1)) ||
-        Object.keys(field.values ?? {}).length
-      )
-        continue;
-      output.push({
-        key: `${message.id}:${field.key}`,
-        name: message.id === 20 ? field.name : `${message.name}: ${field.name}`,
-        units: field.units,
-        axis: hasTime ? "time" : "sample",
-      });
+    for (const source of document.sources.length > 1
+      ? document.sources.map((s) => s.id)
+      : [undefined]) {
+      const ids = document.recordIds(message.id, source);
+      if (!ids.length) continue;
+      const hasTime = ids.some(
+        (id) => document.index.records[id].timestamp !== undefined,
+      );
+      if (message.id !== 20 && !hasTime && !developer) continue;
+      for (const field of document.getFields(message.id, developer, source)) {
+        if (
+          field.id === 253 ||
+          field.type === "string" ||
+          field.type === "dateTime" ||
+          field.type === "localDateTime" ||
+          field.bitmask ||
+          ((message.id === 164 || message.id === 165) &&
+            (field.id === 0 || field.id === 1)) ||
+          Object.keys(field.values ?? {}).length
+        )
+          continue;
+        output.push({
+          key: `${message.id}:${field.key}${source === undefined ? "" : `:file:${source}`}`,
+          name: `${message.id === 20 ? field.name : `${message.name}: ${field.name}`}${source === undefined ? "" : ` · ${document.sources[source].filename}`}`,
+          label:
+            message.id === 20 ? field.name : `${message.name}: ${field.name}`,
+          units: field.units,
+          axis: hasTime ? "time" : "sample",
+          message: message.id,
+          field: field.key,
+          source,
+        });
+      }
     }
   }
   return output;
@@ -54,7 +65,10 @@ export async function chartSensors(
   if (cached) return cached;
   const candidates = sensors(document, developer);
   const usable = new Set<string>();
-  const groups = new Map<number, Sensor[]>();
+  const groups = new Map<
+    string,
+    { message: number; source?: number; fields: Sensor[] }
+  >();
   for (const sensor of candidates) {
     if (isMotionSensor(sensor)) {
       let count = 0;
@@ -70,24 +84,29 @@ export async function chartSensors(
         }
       }
     } else {
-      const id = Number(sensor.key.split(":")[0]);
-      const fields = groups.get(id) ?? [];
-      fields.push(sensor);
-      groups.set(id, fields);
+      const message = sensor.message!;
+      const key = `${message}:${sensor.source ?? "all"}`;
+      const group = groups.get(key) ?? {
+        message,
+        source: sensor.source,
+        fields: [],
+      };
+      group.fields.push(sensor);
+      groups.set(key, group);
     }
     await job.yield();
   }
   // Count only enough finite source samples to establish a useful series.
-  for (const [message, fields] of groups) {
+  for (const { message, source, fields } of groups.values()) {
     const counts = new Map<string, number>();
     const pending = new Set(fields);
     let index = 0;
-    for (const id of document.index.messages.get(message) ?? []) {
+    for (const id of document.recordIds(message, source)) {
       const record = document.index.records[id];
       const cells = document.cells(id, !developer);
       for (const sensor of pending) {
         if (sensor.axis === "time" && record.timestamp === undefined) continue;
-        const key = sensor.key.slice(sensor.key.indexOf(":") + 1);
+        const key = sensor.field!;
         const value = cells[key]?.[developer ? "raw" : "value"];
         for (const sample of Array.isArray(value) ? value : [value]) {
           if (typeof sample !== "number" || !Number.isFinite(sample)) continue;
@@ -192,8 +211,11 @@ export async function* chartPoints(
     return;
   }
   const [message, ...parts] = sensor.key.split(":");
-  const field = parts.join(":");
-  const ids = document.index.messages.get(Number(message)) ?? [];
+  const field = sensor.field ?? parts.join(":");
+  const ids = document.recordIds(
+    sensor.message ?? Number(message),
+    sensor.source,
+  );
   let sample = 0;
   let file = -1;
   let previous: number | undefined;
@@ -401,8 +423,15 @@ export async function mapData(
   let track: Position[] = [];
   let subfile = -1;
   const finish = async () => {
-    if (track.length)
+    if (track.length) {
       data.tracks.push(full ? track : await simplify(track, 0.00002, job));
+      if (document.sources.length > 1) {
+        data.routeNames ??= [];
+        data.routeNames.push(
+          `${document.sourceName(document.index.records[track[0].record].subfile)} · Route ${data.tracks.length}`,
+        );
+      }
+    }
     track = [];
   };
   let kilometre = 0;

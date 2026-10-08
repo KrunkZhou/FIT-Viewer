@@ -77,6 +77,55 @@ h3 {
 .viewer-file h2 {
   line-height: 1.4;
 }
+.source-file-cell {
+  min-width: 160px;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.viewer-source-files {
+  margin-top: 20px;
+  overflow: auto;
+}
+.viewer-source-files h3 {
+  margin-bottom: 8px;
+}
+.viewer-source-files table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.viewer-source-files th,
+.viewer-source-files td {
+  padding: 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--viewer-border);
+}
+.viewer-source-files td:first-child {
+  overflow-wrap: anywhere;
+}
+.map-route-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.viewer-chart-traces {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding: 0 0 6px;
+  color: var(--viewer-muted);
+  font-size: 12px;
+}
+
+.viewer-chart-traces > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .viewer-mode-toggle {
   position: relative;
   display: inline-flex;

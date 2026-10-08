@@ -14,7 +14,8 @@ export function Overview({
   const start = summary.startTimestamp;
   const end = summary.endTimestamp;
   const elapsed =
-    start !== undefined && end !== undefined ? end - start : undefined;
+    summary.durationSeconds ??
+    (start !== undefined && end !== undefined ? end - start : undefined);
   const duration =
     elapsed !== undefined && Number.isFinite(elapsed) && elapsed >= 0
       ? elapsed
@@ -64,7 +65,13 @@ export function Overview({
           </dd>
         </div>
         <div className="viewer-metric-duration">
-          <dt title="Elapsed time between the first and last activity records, including pauses">
+          <dt
+            title={
+              summary.sources.length > 1
+                ? "Sum of each file's elapsed activity time, including pauses within each file"
+                : "Elapsed time between the first and last activity records, including pauses"
+            }
+          >
             Duration
           </dt>
           <dd>{duration === undefined ? "-" : formatDuration(duration)}</dd>
@@ -132,12 +139,14 @@ export function Overview({
         <div>
           <dt>Profile version</dt>
           <dd>
-            {summary.subfiles
-              .map(
-                (f) =>
-                  `${Math.floor(f.profileVersion / 1000)}.${f.profileVersion % 1000}`,
-              )
-              .join(", ")}
+            {[
+              ...new Set(
+                summary.subfiles.map(
+                  (f) =>
+                    `${Math.floor(f.profileVersion / 1000)}.${f.profileVersion % 1000}`,
+                ),
+              ),
+            ].join(", ")}
           </dd>
         </div>
         <div>
@@ -149,6 +158,36 @@ export function Overview({
           </dd>
         </div>
       </dl>
+      {summary.sources.length > 1 && (
+        <section className="viewer-source-files">
+          <h3>Source files</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Filename</th>
+                <th>Size</th>
+                <th>Records</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {summary.sources.map((source) => (
+                <tr key={source.id}>
+                  <td title={source.filename}>{source.filename}</td>
+                  <td>{source.bytes.toLocaleString()} bytes</td>
+                  <td>{source.records.toLocaleString()}</td>
+                  <td
+                    className={source.error ? "error" : undefined}
+                    title={source.error}
+                  >
+                    {source.error ? "Unavailable" : "Loaded"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
     </section>
   );
 }

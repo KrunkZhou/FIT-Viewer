@@ -244,6 +244,7 @@ export function Messages({
           {active === -1 ? (
             <SingleEntryMessages
               client={client}
+              summary={summary}
               developer={developer}
               visible={singletons.map((m) => m.id)}
               download={download}
@@ -279,6 +280,9 @@ export function Messages({
                   <table>
                     <thead>
                       <tr>
+                        {summary.sources.length > 1 && (
+                          <th scope="col">Source file</th>
+                        )}
                         {data?.fields.map((field) => (
                           <th
                             key={field.key}
@@ -406,6 +410,22 @@ export function Messages({
                             row.index === data.selected ? "selected-row" : ""
                           }
                         >
+                          {summary.sources.length > 1 && (
+                            <td
+                              className="source-file-cell"
+                              title={
+                                summary.sources[
+                                  summary.subfiles[row.subfile].source ?? 0
+                                ].filename
+                              }
+                            >
+                              {
+                                summary.sources[
+                                  summary.subfiles[row.subfile].source ?? 0
+                                ].filename
+                              }
+                            </td>
+                          )}
                           {data.fields.map((field) => (
                             <td
                               key={field.key}

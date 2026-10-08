@@ -170,7 +170,7 @@ test("RR text exports measured intervals in milliseconds without missing slots",
     "1000\n800\n",
   );
 });
-test("ZIP selection ignores metadata entries and extracts only a selected FIT file", async () => {
+test("ZIP uploads extract all FIT entries and ignore metadata files", async () => {
   const zip = new JSZip();
   zip.file("one.FIT", activity(2));
   zip.file("nested/two.fit", activity(3));
@@ -178,16 +178,17 @@ test("ZIP selection ignores metadata entries and extracts only a selected FIT fi
   const blob = await zip.generateAsync({ type: "uint8array" });
   const archive = new File([blob.slice()], "files.zip");
   const job = createJob(new AbortController().signal);
-  const choices = await loadFile(archive, undefined, 100000, job);
-  assert.ok("entries" in choices);
-  assert.deepEqual(choices.entries, ["one.FIT", "nested/two.fit"]);
-  const selected = await loadFile(archive, "nested/two.fit", 100000, job);
-  assert.ok("bytes" in selected);
+  const loaded = await loadFile(archive, 100000, job);
+  assert.equal(loaded.filename, "files.zip");
+  assert.deepEqual(
+    loaded.sources.map((source) => source.filename),
+    ["one.FIT", "nested/two.fit"],
+  );
   assert.equal(
     (
-      await FitDocument.open(selected.bytes, selected.filename)
+      await FitDocument.openSources(loaded.sources, loaded.filename)
     ).index.messages.get(20)?.length,
-    3,
+    5,
   );
 });
 test("compressed ZIP expansion is bounded independently of archive size", async () => {
@@ -200,7 +201,6 @@ test("compressed ZIP expansion is bounded independently of archive size", async 
   await assert.rejects(
     loadFile(
       new File([bytes.slice()], "limit.zip"),
-      undefined,
       10000,
       createJob(new AbortController().signal),
     ),

@@ -1,4 +1,12 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Activity,
   AlertTriangle,
@@ -35,8 +43,8 @@ export default function App() {
   const client = useMemo(() => new DocumentClient(), []);
   const [summary, setSummary] = useState<DocumentSummary>();
   const [selectedFile, setSelectedFile] = useState<File>();
-  const [entries, setEntries] = useState<string[]>();
-  const [entry, setEntry] = useState("");
+  const [workspace, setWorkspace] = useState<DocumentSummary>();
+  const [source, setSource] = useState("");
   const [developer, setDeveloper] = useState(false);
   const [tab, setTab] = useState<Tab>("overview");
   const [visited, setVisited] = useState<Tab[]>(["overview"]);
@@ -87,7 +95,7 @@ export default function App() {
   }, [tab]);
   const updateProgress = (completed: number, total: number, phase: string) =>
     setProgress({ value: total ? completed / total : 0, phase });
-  async function open(file: File, selectedEntry?: string) {
+  async function open(file: File) {
     const id = ++generation.current;
     job.current?.abort();
     downloads.current.clear();
@@ -102,28 +110,55 @@ export default function App() {
     setCsvQuery(undefined);
     setSelectedFile(file);
     setProgress({ value: 0, phase: "Opening file" });
-    if (!selectedEntry) {
-      setEntries(undefined);
-      setEntry("");
-    }
+    setWorkspace(undefined);
+    setSource("");
     try {
       const config = Number(import.meta.env.VITE_MAX_FILE_MIB) || 512;
       const result = await client.open(file, {
-        entry: selectedEntry,
         limit: config * 1048576,
         signal: controller.signal,
         progress: updateProgress,
       });
       if (id !== generation.current || controller.signal.aborted) return;
-      if ("entries" in result) {
-        setEntries(result.entries);
-        setEntry("");
-      } else {
-        setSummary(result);
-        setTab("overview");
-        setVisited(["overview"]);
-        setTarget(undefined);
+      setWorkspace(result);
+      setSummary(result);
+      setTab("overview");
+      setVisited(["overview"]);
+      setTarget(undefined);
+    } catch (error) {
+      if (id === generation.current && (error as Error).name !== "AbortError")
+        setError((error as Error).message);
+    } finally {
+      if (id === generation.current) {
+        setBusy(false);
+        setProgress(undefined);
       }
+    }
+  }
+  async function filterSource(value: string) {
+    const id = ++generation.current;
+    job.current?.abort();
+    downloads.current.clear();
+    const controller = new AbortController();
+    job.current = controller;
+    setSource(value);
+    setBusy(true);
+    setError("");
+    setNotice("");
+    setSummary(undefined);
+    setCsvQuery(undefined);
+    setProgress({ value: 0, phase: "Opening source view" });
+    try {
+      const result = await client.selectSource(
+        value === "" ? undefined : Number(value),
+        controller.signal,
+        updateProgress,
+      );
+      if (id !== generation.current || controller.signal.aborted) return;
+      setSummary(result);
+      setTab("overview");
+      setVisited(["overview"]);
+      setTarget(undefined);
     } catch (error) {
       if (id === generation.current && (error as Error).name !== "AbortError")
         setError((error as Error).message);
@@ -158,7 +193,7 @@ export default function App() {
       downloads.current.save(result);
       if (query.format === "fit")
         setNotice(
-          `${result.partial ? "Partial recovery validated; missing or undecodable source data could not be recovered." : "Repaired file structure validated."}${result.generated?.length ? ` Generated: ${result.generated.join(", ")}.` : ""}${result.unresolved?.length ? ` ${result.unresolved.length} warnings or unresolved omissions remain; inspect the repaired file in Diagnostics.` : ""}`,
+          `${result.filename.endsWith(".zip") ? "Recovered entries validated; see repair-report.json in the ZIP for per-file results." : result.partial ? "Partial recovery validated; missing or undecodable source data could not be recovered." : "Repaired file structure validated."}${result.partial && result.filename.endsWith(".zip") ? " Some entries remain partially recovered or unrecovered." : ""}${result.generated?.length ? ` Generated: ${result.generated.join(", ")}.` : ""}${result.unresolved?.length ? ` ${result.unresolved.length} warnings or unresolved omissions remain; inspect Diagnostics.` : ""}`,
         );
     } catch (error) {
       if (id === generation.current && (error as Error).name !== "AbortError")
@@ -210,7 +245,7 @@ export default function App() {
       : []),
   ];
   const content = summary ? (
-    <>
+    <Fragment key={generation.current}>
       <div className="section-view" hidden={tab !== "overview"}>
         <Overview
           summary={summary}
@@ -258,7 +293,7 @@ export default function App() {
           />
         </div>
       )}
-    </>
+    </Fragment>
   ) : (
     <div className="viewer-empty">
       {busy ? (
@@ -266,40 +301,15 @@ export default function App() {
       ) : (
         <Upload size={28} />
       )}
-      <h2>
-        {busy
-          ? "Opening FIT file..."
-          : entries
-            ? "Select a FIT file"
-            : "Open a FIT file"}
-      </h2>
-      {entries ? (
-        <select
-          aria-label="FIT file in ZIP"
-          value={entry}
-          onChange={(event) => {
-            setEntry(event.target.value);
-            if (event.target.value && selectedFile)
-              void open(selectedFile, event.target.value);
-          }}
+      <h2>{busy ? "Opening FIT file..." : "Open a FIT file"}</h2>
+      {!busy && (
+        <button
+          className="viewer-open-button"
+          onClick={() => fileInput.current?.click()}
         >
-          <option value="" disabled>
-            Select a file
-          </option>
-          {entries.map((name) => (
-            <option key={name}>{name}</option>
-          ))}
-        </select>
-      ) : (
-        !busy && (
-          <button
-            className="viewer-open-button"
-            onClick={() => fileInput.current?.click()}
-          >
-            <Upload size={16} />
-            Open FIT file
-          </button>
-        )
+          <Upload size={16} />
+          Open FIT file
+        </button>
       )}
     </div>
   );
@@ -330,17 +340,24 @@ export default function App() {
             <h2>
               {summary?.filename ?? selectedFile?.name ?? "No file selected"}
             </h2>
-            {summary && entries && (
+            {workspace && workspace.sources.length > 1 && (
               <select
-                aria-label="FIT file in ZIP"
-                value={entry}
-                onChange={(event) => {
-                  setEntry(event.target.value);
-                  if (selectedFile) void open(selectedFile, event.target.value);
-                }}
+                aria-label="Source file"
+                title="Filter source files"
+                value={source}
+                disabled={busy || exporting}
+                onChange={(event) => void filterSource(event.target.value)}
               >
-                {entries.map((name) => (
-                  <option key={name}>{name}</option>
+                <option value="">All files ({workspace.sources.length})</option>
+                {workspace.sources.map((file) => (
+                  <option
+                    key={file.id}
+                    value={file.id}
+                    disabled={Boolean(file.error)}
+                  >
+                    {file.filename}
+                    {file.error ? " (unavailable)" : ""}
+                  </option>
                 ))}
               </select>
             )}
@@ -424,49 +441,51 @@ export default function App() {
           </p>
         )}
         <div className="section-tabs">
-          <nav className="viewer-tab-navigation">
-            <div
-              className="viewer-tab-list"
-              role="tablist"
-              aria-label="File sections"
-              onKeyDown={navigateTabs}
-            >
-              {tabs.map(({ id, title, icon: Icon }) => (
-                <button
-                  id={`tab-${id}`}
-                  aria-controls="section-panel"
-                  role="tab"
-                  tabIndex={tab === id ? 0 : -1}
-                  aria-selected={tab === id}
-                  className="viewer-tab"
-                  key={id}
-                  onClick={() => setTab(id)}
-                >
-                  <Icon size={17} />
-                  {title}
-                  {id === "messages" && summary && (
-                    <span className="viewer-tab-count">
-                      {
-                        summary.messages.filter((m) => developer || m.known)
-                          .length
-                      }
-                    </span>
-                  )}
-                  {id === "diagnostics" && (
-                    <span className="viewer-tab-count">
-                      {summary?.diagnosticCount}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          </nav>
+          {summary && (
+            <nav className="viewer-tab-navigation">
+              <div
+                className="viewer-tab-list"
+                role="tablist"
+                aria-label="File sections"
+                onKeyDown={navigateTabs}
+              >
+                {tabs.map(({ id, title, icon: Icon }) => (
+                  <button
+                    id={`tab-${id}`}
+                    aria-controls="section-panel"
+                    role="tab"
+                    tabIndex={tab === id ? 0 : -1}
+                    aria-selected={tab === id}
+                    className="viewer-tab"
+                    key={id}
+                    onClick={() => setTab(id)}
+                  >
+                    <Icon size={17} />
+                    {title}
+                    {id === "messages" && summary && (
+                      <span className="viewer-tab-count">
+                        {
+                          summary.messages.filter((m) => developer || m.known)
+                            .length
+                        }
+                      </span>
+                    )}
+                    {id === "diagnostics" && (
+                      <span className="viewer-tab-count">
+                        {summary?.diagnosticCount}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </nav>
+          )}
           <div className="viewer-tab-panels">
             <section
               id="section-panel"
-              role="tabpanel"
-              aria-labelledby={`tab-${tab}`}
-              data-tab-id={tab}
+              role={summary ? "tabpanel" : undefined}
+              aria-labelledby={summary ? `tab-${tab}` : undefined}
+              data-tab-id={summary ? tab : undefined}
               className="viewer-tab-panel"
             >
               <Suspense fallback={<p className="viewer-loading">Loading...</p>}>

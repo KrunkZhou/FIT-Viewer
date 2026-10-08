@@ -12,7 +12,9 @@ import { readValue, valid, WIDTHS } from "../protocol/binary";
 import type { FitDocument } from "./document";
 
 export function isMotionSensor(sensor: Sensor): boolean {
-  const [message, field] = sensor.key.split(":").map(Number);
+  const [keyMessage, keyField] = sensor.key.split(":");
+  const message = sensor.message ?? Number(keyMessage);
+  const field = Number(sensor.field ?? keyField);
   return (
     (message === 164 || message === 165) &&
     Number.isInteger(field) &&
@@ -67,8 +69,9 @@ function* packets(
   message: number,
   fields: FieldInfo[],
   developer: boolean,
+  source?: number,
 ): Generator<Packet> {
-  for (const id of document.index.messages.get(message) ?? []) {
+  for (const id of document.recordIds(message, source)) {
     const record = document.index.records[id];
     const locations = layout(record);
     const ms = values(document, record, locations.get(0))[0];
@@ -121,14 +124,22 @@ export async function* motionPoints(
   developer: boolean,
   job: Job,
 ): AsyncGenerator<ChartPoint> {
-  const [message, field] = sensor.key.split(":").map(Number);
+  const [keyMessage, keyField] = sensor.key.split(":");
+  const message = sensor.message ?? Number(keyMessage);
+  const field = Number(sensor.field ?? keyField);
   const info = document
-    .getFields(message, developer)
+    .getFields(message, developer, sensor.source)
     .find((f) => f.id === field)!;
   const timeline = new Timeline();
   let index = 0;
-  const count = document.index.messages.get(message)?.length ?? 0;
-  for (const packet of packets(document, message, [info], developer)) {
+  const count = document.recordIds(message, sensor.source).length;
+  for (const packet of packets(
+    document,
+    message,
+    [info],
+    developer,
+    sensor.source,
+  )) {
     for (let i = 0; i < packet.times.length; i++) {
       const time = packet.times[i];
       const gap = timeline.next(time, packet.subfile);
@@ -221,15 +232,25 @@ export async function motionChart(
   const series: Record<string, ChartPoint[]> = {};
   let start = Infinity;
   let end = -Infinity;
-  for (const message of [164, 165]) {
-    const chosen = selected.filter((s) => s.key.startsWith(`${message}:`));
-    if (!chosen.length) continue;
+  const groups = new Map<string, Sensor[]>();
+  for (const sensor of selected) {
+    const message = sensor.message ?? Number(sensor.key.split(":")[0]);
+    const key = `${message}:${sensor.source ?? "all"}`;
+    const group = groups.get(key) ?? [];
+    group.push(sensor);
+    groups.set(key, group);
+  }
+  for (const chosen of groups.values()) {
+    const message = chosen[0].message ?? Number(chosen[0].key.split(":")[0]);
+    const source = chosen[0].source;
     const fields = chosen.map((sensor) =>
       document
-        .getFields(message, query.developer)
-        .find((field) => field.key === sensor.key.split(":")[1])!,
+        .getFields(message, query.developer, source)
+        .find(
+          (field) => field.key === (sensor.field ?? sensor.key.split(":")[1]),
+        )!,
     );
-    const ids = document.index.messages.get(message) ?? [];
+    const ids = document.recordIds(message, source);
     let count = 0;
     for (let i = 0; i < ids.length; i++) {
       const record = document.index.records[ids[i]];
@@ -263,7 +284,13 @@ export async function motionChart(
     );
     const timeline = new Timeline();
     let index = 0;
-    for (const packet of packets(document, message, fields, query.developer)) {
+    for (const packet of packets(
+      document,
+      message,
+      fields,
+      query.developer,
+      source,
+    )) {
       for (let sample = 0; sample < packet.times.length; sample++) {
         const time = packet.times[sample];
         const gap = timeline.next(time, packet.subfile);

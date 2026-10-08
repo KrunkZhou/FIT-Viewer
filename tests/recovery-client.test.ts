@@ -161,6 +161,18 @@ test("client replacement rejects old queries, ignores stale results and terminat
     assert.equal(FakeWorker.all[1].terminated, false);
     FakeWorker.all[1].respond(0, { filename: "current" });
     assert.equal(((await next) as any).filename, "current");
+    const staleQuery = client.request({ kind: "map" });
+    const staleRequest = FakeWorker.all[1].sent.length - 1;
+    const cancelledView = assert.rejects(staleQuery, { name: "AbortError" });
+    const sourceView = client.selectSource(1);
+    await cancelledView;
+    assert.equal(FakeWorker.all[1].terminated, false);
+    FakeWorker.all[1].respond(staleRequest, { filename: "old-source" });
+    assert.equal(FakeWorker.all[1].sent.at(-1).source, 1);
+    FakeWorker.all[1].respond(FakeWorker.all[1].sent.length - 1, {
+      filename: "selected-source",
+    });
+    assert.equal((await sourceView).filename, "selected-source");
     const controller = new AbortController();
     const query = client.request({ kind: "map" }, controller.signal);
     const aborted = assert.rejects(query, { name: "AbortError" });

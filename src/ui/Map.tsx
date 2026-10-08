@@ -96,6 +96,8 @@ export default function ActivityMap({
   }, [client]);
   const routeVisible = (route?: number) =>
     route === undefined || !hiddenRoutes.includes(route);
+  const routeName = (route: number) =>
+    data?.routeNames?.[route] ?? `Route ${route + 1}`;
   const visible = useMemo(
     () =>
       data && {
@@ -312,13 +314,15 @@ export default function ActivityMap({
                       type="checkbox"
                       checked={routeVisible(route)}
                       onChange={() => flipRoute(route)}
-                      aria-label={`Show Route ${route + 1}`}
+                      aria-label={`Show ${routeName(route)}`}
                     />
                     <span
                       className="map-route-swatch"
                       style={{ background: COLORS[route % COLORS.length] }}
                     />
-                    Route {route + 1}
+                    <span className="map-route-name" title={routeName(route)}>
+                      {routeName(route)}
+                    </span>
                   </label>
                 ))}
               </section>
@@ -374,7 +378,7 @@ export default function ActivityMap({
                         {data.tracks.length > 1 &&
                           point.route !== undefined && (
                             <small className="viewer-muted">
-                              Route {point.route + 1}
+                              {routeName(point.route)}
                             </small>
                           )}
                       </span>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Download } from "lucide-react";
-import type { ExportQuery, SingleEntryView } from "../model";
+import type { DocumentSummary, ExportQuery, SingleEntryView } from "../model";
 import type { DocumentClient } from "../document/client";
 import { displayCell } from "./format";
 import { IconButton } from "./controls";
@@ -8,11 +8,13 @@ import { TableScroll } from "./TableScroll";
 
 export function SingleEntryMessages({
   client,
+  summary,
   developer,
   visible,
   download,
 }: {
   client: DocumentClient;
+  summary: DocumentSummary;
   developer: boolean;
   visible: number[];
   download: (query: ExportQuery) => void;
@@ -76,6 +78,9 @@ export function SingleEntryMessages({
                 <table aria-label={entry.message.name}>
                   <thead>
                     <tr>
+                      {summary.sources.length > 1 && (
+                        <th scope="col">Source file</th>
+                      )}
                       {entry.fields.map((field) => (
                         <th
                           key={field.key}
@@ -92,6 +97,15 @@ export function SingleEntryMessages({
                   </thead>
                   <tbody>
                     <tr>
+                      {summary.sources.length > 1 && (
+                        <td className="source-file-cell">
+                          {
+                            summary.sources[
+                              summary.subfiles[entry.row.subfile].source ?? 0
+                            ].filename
+                          }
+                        </td>
+                      )}
                       {entry.fields.map((field) => (
                         <td key={field.key}>
                           {displayCell(

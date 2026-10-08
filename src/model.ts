@@ -27,6 +27,7 @@ export interface RecordRef {
 }
 export interface Subfile {
   index: number;
+  source?: number;
   start: number;
   headerSize: number;
   bodyStart: number;
@@ -45,9 +46,11 @@ export interface Diagnostic {
   code: string;
   message: string;
   subfile: number;
+  source?: number;
   offset: number;
   end: number;
   record?: number;
+  messageId?: number;
   repair: "header" | "crc" | "tail" | "summary" | "none";
 }
 export interface FieldInfo {
@@ -72,11 +75,13 @@ export interface MessageInfo {
 }
 export interface DocumentSummary {
   filename: string;
+  sources: SourceInfo[];
   bytes: number;
   records: number;
   gpsPoints: number;
   startTimestamp?: number;
   endTimestamp?: number;
+  durationSeconds?: number;
   sports: string[];
   fileTypes: string[];
   messages: MessageInfo[];
@@ -87,6 +92,17 @@ export interface DocumentSummary {
   hasCharts: boolean;
   hasHrv: boolean;
   repairable: boolean;
+}
+export interface SourceInfo {
+  id: number;
+  filename: string;
+  bytes: number;
+  start: number;
+  end: number;
+  records: number;
+  startTimestamp?: number;
+  endTimestamp?: number;
+  error?: string;
 }
 export interface Cell {
   raw: RawValue;
@@ -130,8 +146,12 @@ export interface DiagnosticPage {
 export interface Sensor {
   key: string;
   name: string;
+  label?: string;
   units: string;
   axis?: "time" | "sample";
+  source?: number;
+  message?: number;
+  field?: string;
 }
 export interface ChartPoint {
   time: number;
@@ -167,6 +187,7 @@ export interface MapPoint extends Position {
 export interface MapData {
   tracks: Position[][];
   points: MapPoint[];
+  routeNames?: string[];
 }
 export interface ExportQuery {
   format: "csv" | "gpx" | "geojson" | "hrv" | "json" | "fit";
@@ -185,14 +206,14 @@ export interface ExportResult {
   generated?: string[];
   unresolved?: string[];
 }
-export type RequestPayload =
+export type RequestPayload = (
   | {
       kind: "open";
       file: File;
       filename?: string;
-      entry?: string;
       limit: number;
     }
+  | { kind: "summary" }
   | { kind: "table"; query: TableQuery }
   | { kind: "singletons"; developer: boolean }
   | { kind: "chart"; query: ChartQuery }
@@ -200,7 +221,8 @@ export type RequestPayload =
   | { kind: "diagnostics"; page: number; size: number }
   | { kind: "export"; query: ExportQuery }
   | { kind: "cancel"; target: number }
-  | { kind: "dispose" };
+  | { kind: "dispose" }
+) & { source?: number };
 export type WorkerRequest = RequestPayload & {
   requestId: number;
   documentId: number;
@@ -216,7 +238,6 @@ export type WorkerResponsePayload =
         | ChartData
         | MapData
         | ExportResult
-        | { entries: string[] }
         | null;
     }
   | { kind: "progress"; completed: number; total: number; phase: string }

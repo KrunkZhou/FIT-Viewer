@@ -9,6 +9,7 @@ import type {
   RawValue,
   RecordRef,
   SingleEntryView,
+  SourceInfo,
   TablePage,
   TableQuery,
   WireField,
@@ -18,11 +19,14 @@ import { fieldKey, numberValue, valid, WIDTHS } from "../protocol/binary";
 import { type FitIndex, idleJob, readFit } from "../protocol/reader";
 import { expandComponents } from "./components";
 import { positionCoordinates, positionFields } from "./positions";
+import { readWorkspace } from "./workspace";
+import type { SourceInput } from "./files";
 import hrUtility from "@garmin/fitsdk/src/utils-hr-mesg.js";
 
 export class FitDocument {
   readonly metadata: Metadata;
-  readonly fields = new Map<number, FieldInfo[]>();
+  readonly fields = new Map<string, FieldInfo[]>();
+  private sourceRecords = new Map<number, Map<number, number[]>>();
   readonly messageInfo: MessageInfo[];
   readonly components = new Map<number, Record<string, RawValue>>();
   readonly mergedHr = new Map<number, number>();
@@ -37,6 +41,16 @@ export class FitDocument {
   private constructor(
     readonly index: FitIndex,
     readonly filename: string,
+    readonly sources: SourceInfo[] = [
+      {
+        id: 0,
+        filename,
+        bytes: index.bytes.length,
+        start: 0,
+        end: index.bytes.length,
+        records: index.records.length,
+      },
+    ],
   ) {
     this.metadata = new Metadata(index);
     this.messageInfo = Array.from(index.messages, ([id, records]) => ({
@@ -57,14 +71,53 @@ export class FitDocument {
     await document.buildDerived(job);
     return document;
   }
+  static async openSources(
+    sources: SourceInput[],
+    filename: string,
+    job = idleJob(),
+  ): Promise<FitDocument> {
+    if (sources.length === 1)
+      return FitDocument.open(sources[0].bytes, filename, job);
+    const workspace = await readWorkspace(sources, job);
+    const document = new FitDocument(
+      workspace.index,
+      filename,
+      workspace.sources,
+    );
+    await document.buildDerived(job);
+    return document;
+  }
+  sourceName(subfile: number): string {
+    return (
+      this.sources[this.index.subfiles[subfile]?.source ?? 0]?.filename ??
+      this.filename
+    );
+  }
+  recordIds(message: number, source?: number): number[] {
+    return source === undefined
+      ? (this.index.messages.get(message) ?? [])
+      : (this.sourceRecords.get(source)?.get(message) ?? []);
+  }
   summary(): DocumentSummary {
     return {
       filename: this.filename,
+      sources: this.sources,
       bytes: this.index.bytes.length,
       records: this.index.records.length,
       gpsPoints: this.gpsPoints,
       startTimestamp: this.startTimestamp,
       endTimestamp: this.endTimestamp,
+      durationSeconds: this.sources.reduce<number | undefined>(
+        (total, source) => {
+          if (
+            source.startTimestamp === undefined ||
+            source.endTimestamp === undefined
+          )
+            return total;
+          return (total ?? 0) + source.endTimestamp - source.startTimestamp;
+        },
+        undefined,
+      ),
       sports: [...this.sports],
       fileTypes: [
         ...new Set(
@@ -151,12 +204,13 @@ export class FitDocument {
     }
     return result;
   }
-  getFields(message: number, developer: boolean): FieldInfo[] {
-    let fields = this.fields.get(message);
+  getFields(message: number, developer: boolean, source?: number): FieldInfo[] {
+    const cacheKey = `${message}:${source ?? "all"}`;
+    let fields = this.fields.get(cacheKey);
     if (!fields) {
       const found = new Map<string, FieldInfo>();
       const visited = new Set<DefinitionIdentity>();
-      for (const id of this.index.messages.get(message) ?? []) {
+      for (const id of this.recordIds(message, source)) {
         const record = this.index.records[id];
         if (visited.has(record.definition)) continue;
         visited.add(record.definition);
@@ -210,7 +264,11 @@ export class FitDocument {
             );
         }
       }
-      if (message === 20 && this.mergedHr.size && !found.has("3"))
+      if (
+        message === 20 &&
+        !found.has("3") &&
+        this.recordIds(message, source).some((id) => this.mergedHr.has(id))
+      )
         found.set("3", {
           key: "3",
           id: 3,
@@ -227,7 +285,7 @@ export class FitDocument {
             ? 1
             : Number(a.developer) - Number(b.developer) || a.id - b.id,
       );
-      this.fields.set(message, fields);
+      this.fields.set(cacheKey, fields);
     }
     return developer ? fields : fields.filter((f) => !f.unknown);
   }
@@ -388,6 +446,15 @@ export class FitDocument {
     for (let id = 0; id < this.index.records.length; id++) {
       const record = this.index.records[id];
       const raw = this.raw(id);
+      if (this.sources.length > 1) {
+        const source = this.index.subfiles[record.subfile].source!;
+        const messages =
+          this.sourceRecords.get(source) ?? new Map<number, number[]>();
+        const ids = messages.get(record.definition.message) ?? [];
+        ids.push(id);
+        messages.set(record.definition.message, ids);
+        this.sourceRecords.set(source, messages);
+      }
       const position = !this.hasMap && positions.get(record.definition);
       if (position) {
         const coordinate = (wire: WireField) =>
@@ -486,6 +553,10 @@ export class FitDocument {
         if (t !== undefined) {
           this.startTimestamp = Math.min(this.startTimestamp ?? t, t);
           this.endTimestamp = Math.max(this.endTimestamp ?? t, t);
+          const source =
+            this.sources[this.index.subfiles[record.subfile].source ?? 0];
+          source.startTimestamp = Math.min(source.startTimestamp ?? t, t);
+          source.endTimestamp = Math.max(source.endTimestamp ?? t, t);
         }
         if (
           previous?.subfile === record.subfile &&

@@ -1,10 +1,11 @@
-import type { ExportQuery, ExportResult, RawValue } from "../model";
+import type { ExportQuery, ExportResult, FieldInfo, RawValue } from "../model";
 import { FitDocument } from "../document/document";
 import { chartPoints, mapPositions, sensors } from "../document/series";
 import { FIT_EPOCH } from "../protocol/time";
 import { idleJob } from "../protocol/reader";
 import { repair } from "../repair/repair";
 import { exportGeoJson } from "./geojson";
+import { repairArchive } from "./archive";
 
 export const escapeCsv = (value: string): string =>
   /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
@@ -47,6 +48,7 @@ export async function exportDocument(
   const parts: BlobPart[] = [];
   const encoder = new TextEncoder();
   if (query.format === "fit") {
+    if (document.sources.length > 1) return repairArchive(document, job);
     const result = await repair(document, job);
     return {
       blob: new Blob([result.bytes as Uint8Array<ArrayBuffer>], {
@@ -64,6 +66,22 @@ export async function exportDocument(
     const fields = document.getFields(message, developer);
     const ids = document.index.messages.get(message) ?? [];
     const infos = new Map(fields.map((field) => [field.key, field]));
+    const combined = document.sources.length > 1;
+    const sourceInfos = new Map(
+      combined
+        ? document.sources.map(
+            (source) =>
+              [
+                source.id,
+                new Map(
+                  document
+                    .getFields(message, developer, source.id)
+                    .map((field) => [field.key, field]),
+                ),
+              ] as const,
+          )
+        : [],
+    );
     const dateFormat = new Intl.DateTimeFormat(query.locale, {
       timeZone: query.timezone,
       year: "numeric",
@@ -73,11 +91,10 @@ export async function exportDocument(
       minute: "2-digit",
       second: "2-digit",
     });
-    const cast = (value: RawValue, key: string): string => {
+    const cast = (value: RawValue, info: FieldInfo): string => {
       if (value === null) return "";
       if (Array.isArray(value))
-        return `[${value.map((v) => cast(v, key)).join(", ")}]`;
-      const info = infos.get(key)!;
+        return `[${value.map((v) => cast(v, info)).join(", ")}]`;
       if (
         !developer &&
         (info.type === "dateTime" || info.type === "localDateTime") &&
@@ -100,7 +117,14 @@ export async function exportDocument(
       }
       return String(value);
     };
-    parts.push(encoder.encode(fields.map((f) => escapeCsv(f.name)).join(",")));
+    parts.push(
+      encoder.encode(
+        [
+          ...(combined ? ["Source file"] : []),
+          ...fields.map((f) => escapeCsv(f.name)),
+        ].join(","),
+      ),
+    );
     const batchSize = Math.max(
       1,
       Math.min(256, Math.floor(4096 / Math.max(1, fields.length))),
@@ -109,18 +133,21 @@ export async function exportDocument(
       const lines: string[] = [];
       for (const id of ids.slice(offset, offset + batchSize)) {
         const cells = document.cells(id, !developer);
-        lines.push(
-          fields
-            .map((f) =>
-              escapeCsv(
-                cast(
-                  cells[f.key]?.[developer ? "raw" : "value"] ?? null,
-                  f.key,
-                ),
+        const file =
+          document.index.subfiles[document.index.records[id].subfile];
+        const rowInfos = sourceInfos.get(file.source ?? 0) ?? infos;
+        const values = fields
+          .map((f) =>
+            escapeCsv(
+              cast(
+                cells[f.key]?.[developer ? "raw" : "value"] ?? null,
+                rowInfos.get(f.key) ?? f,
               ),
-            )
-            .join(","),
-        );
+            ),
+          )
+          .join(",");
+        const source = document.sourceName(document.index.records[id].subfile);
+        lines.push(`${combined ? `${escapeCsv(source)},` : ""}${values}`);
       }
       parts.push(encoder.encode(`\n${lines.join("\n")}`));
       job.progress(
@@ -203,38 +230,45 @@ export async function exportDocument(
     };
   }
   if (query.format === "hrv") {
-    const ids = document.index.messages.get(78) ?? [];
-    for (let offset = 0; offset < ids.length; offset += 256) {
-      const lines = ids.slice(offset, offset + 256).flatMap((id) => {
-        const value = document.cells(id)["0"]?.value;
-        return (Array.isArray(value) ? value : [value])
-          .filter((v): v is number => typeof v === "number" && v > 0)
-          .map((v) => String(v * 1000));
-      });
-      if (lines.length) parts.push(`${lines.join("\n")}\n`);
-      job.progress(
-        Math.min(offset + 256, ids.length),
-        ids.length,
-        "Exporting RR intervals",
-      );
-      await job.yield();
-    }
-    if (!ids.length) {
-      let previous: number | undefined;
-      let file = -1;
-      for (const id of document.index.messages.get(132) ?? []) {
-        const record = document.index.records[id];
-        const values = document.cells(id)["9"]?.value;
-        if (file !== record.subfile) previous = undefined;
-        file = record.subfile;
-        for (const value of Array.isArray(values) ? values : [values]) {
-          if (typeof value !== "number") continue;
-          if (previous !== undefined && value > previous)
-            parts.push(`${(value - previous) * 1000}\n`);
-          previous = value;
-        }
+    let completed = 0;
+    const total = document.sources.length;
+    for (const source of document.sources) {
+      const filter = total > 1 ? source.id : undefined;
+      const ids = document.recordIds(78, filter);
+      for (let offset = 0; offset < ids.length; offset += 256) {
+        const lines = ids.slice(offset, offset + 256).flatMap((id) => {
+          const value = document.cells(id)["0"]?.value;
+          return (Array.isArray(value) ? value : [value])
+            .filter((v): v is number => typeof v === "number" && v > 0)
+            .map((v) => String(v * 1000));
+        });
+        if (lines.length) parts.push(`${lines.join("\n")}\n`);
+        job.progress(
+          completed + Math.min(offset + 256, ids.length) / ids.length,
+          total,
+          "Exporting RR intervals",
+        );
         await job.yield();
       }
+      if (!ids.length) {
+        let previous: number | undefined;
+        let file = -1;
+        for (const id of document.recordIds(132, filter)) {
+          const record = document.index.records[id];
+          const values = document.cells(id)["9"]?.value;
+          if (file !== record.subfile) previous = undefined;
+          file = record.subfile;
+          for (const value of Array.isArray(values) ? values : [values]) {
+            if (typeof value !== "number") continue;
+            if (previous !== undefined && value > previous)
+              parts.push(`${(value - previous) * 1000}\n`);
+            previous = value;
+          }
+          await job.yield();
+        }
+      }
+      job.progress(++completed, total, "Exporting RR intervals");
+      await job.yield();
     }
     return {
       blob: new Blob(parts, { type: "text/plain;charset=utf-8" }),

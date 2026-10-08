@@ -22,6 +22,7 @@ export class DocumentClient {
   private worker?: Worker;
   private nextRequest = 1;
   private documentId = 0;
+  private source?: number;
   private pending = new Map<number, Pending>();
   private cancellations = new Map<number, number>();
   private newWorker(): void {
@@ -85,17 +86,17 @@ export class DocumentClient {
   open(
     file: File,
     options: {
-      entry?: string;
       limit?: number;
       signal?: AbortSignal;
       progress?: Pending["progress"];
     } = {},
-  ): Promise<DocumentSummary | { entries: string[] }> {
+  ): Promise<DocumentSummary> {
     if (options.signal?.aborted)
       return Promise.reject(new DOMException("Cancelled", "AbortError"));
     this.destroy();
     validationStartDocument();
     this.documentId++;
+    this.source = undefined;
     try {
       this.newWorker();
     } catch (error) {
@@ -105,12 +106,30 @@ export class DocumentClient {
       {
         kind: "open",
         file,
-        entry: options.entry,
         limit: options.limit ?? 512 * 1048576,
       },
       options.signal,
       options.progress,
     );
+  }
+  selectSource(
+    source: number | undefined,
+    signal?: AbortSignal,
+    progress?: Pending["progress"],
+  ): Promise<DocumentSummary> {
+    for (const [requestId, pending] of this.pending) {
+      this.worker?.postMessage({
+        kind: "cancel",
+        target: requestId,
+        requestId: this.nextRequest++,
+        documentId: this.documentId,
+      } satisfies WorkerRequest);
+      pending.cleanup();
+      pending.reject(new DOMException("Cancelled", "AbortError"));
+    }
+    this.pending.clear();
+    this.source = source;
+    return this.request({ kind: "summary" }, signal, progress);
   }
   request<T>(
     payload: RequestPayload,
@@ -152,6 +171,7 @@ export class DocumentClient {
       });
       try {
         this.worker!.postMessage({
+          source: this.source,
           ...payload,
           requestId,
           documentId: this.documentId,

@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Worker } from "node:worker_threads";
-import type { ExportResult, WorkerRequest, WorkerResponse } from "../src/model";
+import type {
+  DocumentSummary,
+  TablePage,
+  ExportResult,
+  WorkerRequest,
+  WorkerResponse,
+} from "../src/model";
+import JSZip from "jszip";
 import { activity } from "./fixtures";
 function worker() {
   return new Worker(new URL("./worker-adapter.mjs", import.meta.url), {
@@ -126,6 +133,79 @@ test("worker rejects stale documents and supports queries while exporting", asyn
       true,
     );
     await output;
+  } finally {
+    await w.terminate();
+  }
+});
+
+test("ZIP worker opens a combined document, filters entries, and restores the combined view", async () => {
+  const w = worker();
+  let id = 0;
+  async function request(
+    payload: Omit<WorkerRequest, "requestId" | "documentId">,
+  ) {
+    const requestId = ++id;
+    const pending = wait(
+      w,
+      (message) =>
+        message.requestId === requestId &&
+        (message.kind === "result" || message.kind === "error"),
+    );
+    w.postMessage({ ...payload, requestId, documentId: 1 });
+    const response = await pending;
+    if (response.kind === "error") throw new Error(response.message);
+    return (response as Extract<WorkerResponse, { kind: "result" }>).result;
+  }
+  try {
+    const bytes = await new JSZip()
+      .file("A.fit", activity(3))
+      .file("nested/B.fit", activity(2))
+      .generateAsync({ type: "uint8array" });
+    const summary = (await request({
+      kind: "open",
+      file: new File([bytes.slice()], "combined.zip"),
+      filename: "combined.zip",
+      limit: 1e8,
+    } as WorkerRequest)) as DocumentSummary;
+    assert.equal(summary.filename, "combined.zip");
+    assert.equal(summary.sources.length, 2);
+    assert.equal(summary.gpsPoints, 5);
+    const query = { message: 20, page: 0, size: 20, developer: false };
+    assert.equal(
+      ((await request({ kind: "table", query } as WorkerRequest)) as TablePage)
+        .total,
+      5,
+    );
+    const selected = (await request({
+      kind: "summary",
+      source: 1,
+    })) as DocumentSummary;
+    assert.equal(selected.filename, "nested/B.fit");
+    assert.equal(selected.sources.length, 1);
+    assert.equal(selected.gpsPoints, 2);
+    assert.equal(
+      (
+        (await request({
+          kind: "table",
+          source: 1,
+          query,
+        } as WorkerRequest)) as TablePage
+      ).total,
+      2,
+    );
+    assert.equal(
+      ((await request({ kind: "summary" })) as DocumentSummary).sources.length,
+      2,
+    );
+    assert.equal(
+      ((await request({ kind: "table", query } as WorkerRequest)) as TablePage)
+        .total,
+      5,
+    );
+    await assert.rejects(
+      request({ kind: "summary", source: 99 }),
+      /unavailable/,
+    );
   } finally {
     await w.terminate();
   }

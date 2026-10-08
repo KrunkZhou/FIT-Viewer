@@ -42,6 +42,7 @@ test("overview shows elapsed duration, both timestamps and hourly file size with
   ).summary();
   summary.bytes = 3600;
   summary.endTimestamp = summary.startTimestamp! + 7200;
+  summary.durationSeconds = 7200;
   summary.diagnosticCount = 0;
   const markup = render(summary);
   assert.ok(markup.includes("Start - end time"));
@@ -76,9 +77,11 @@ test("overview handles zero, missing and multi-day durations without infinite ho
   assert.ok(render(summary).includes("00:00:00"));
   assert.ok(render(summary).includes("<dt>Size per hour</dt><dd>-</dd>"));
   summary.endTimestamp = undefined;
+  summary.durationSeconds = undefined;
   assert.ok(render(summary).includes("<dd>-</dd>"));
   assert.ok(!render(summary).includes("NaN"));
   summary.endTimestamp = summary.startTimestamp! + 50 * 3600 + 62;
+  summary.durationSeconds = 50 * 3600 + 62;
   assert.ok(render(summary).includes("50:01:02"));
 });
 

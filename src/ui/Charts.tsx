@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckSquare2,
   Download,
@@ -21,6 +21,7 @@ import {
 import type { ChartData, ChartPoint, ExportQuery, Sensor } from "../model";
 import type { DocumentClient } from "../document/client";
 import { IconButton, readPreference, savePreference } from "./controls";
+import { chartMemberKeys, groupSensors } from "./chart-groups";
 
 const COLORS = [
   "#176856",
@@ -40,6 +41,7 @@ function sensorColor(key: string): string {
 function Plot({
   sensor,
   points,
+  traces,
   color,
   references,
   onZoom,
@@ -47,6 +49,7 @@ function Plot({
 }: {
   sensor: Sensor;
   points: ChartPoint[];
+  traces: { sensor: Sensor; points: ChartPoint[]; color: string }[];
   color: string;
   references: number[];
   onZoom: (start: number, end: number) => void;
@@ -69,6 +72,19 @@ function Plot({
         {sensor.name}
         <span className="viewer-muted">{sensor.units}</span>
       </h3>
+      {traces.length > 1 && (
+        <div className="viewer-chart-traces">
+          {traces.map((trace) => (
+            <span key={trace.sensor.key} title={trace.sensor.name}>
+              <span
+                className="viewer-sensor-swatch"
+                style={{ background: trace.color }}
+              />
+              {trace.sensor.name}
+            </span>
+          ))}
+        </div>
+      )}
       <div className="viewer-chart-canvas" ref={ref}>
         {visible && active && (
           <ResponsiveContainer>
@@ -97,6 +113,7 @@ function Plot({
               <XAxis
                 dataKey="time"
                 type="number"
+                allowDuplicatedCategory={false}
                 domain={["dataMin", "dataMax"]}
                 tickFormatter={(value) =>
                   sensor.axis === "sample"
@@ -125,16 +142,20 @@ function Plot({
                       ).toLocaleString()
                 }
               />
-              <Line
-                type="linear"
-                dataKey="value"
-                name={sensor.name}
-                stroke={color}
-                strokeWidth={1.5}
-                dot={false}
-                connectNulls={false}
-                isAnimationActive={false}
-              />
+              {traces.map((trace) => (
+                <Line
+                  key={trace.sensor.key}
+                  data={trace.points}
+                  type="linear"
+                  dataKey="value"
+                  name={trace.sensor.name}
+                  stroke={trace.color}
+                  strokeWidth={1.5}
+                  dot={false}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              ))}
               {references.map((value, i) => (
                 <ReferenceLine
                   key={i}
@@ -188,6 +209,12 @@ export default function Charts({
   const [loading, setLoading] = useState(false);
   const content = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
+  const groups = useMemo(
+    () => groupSensors(data?.sensors ?? []),
+    [data?.sensors],
+  );
+  const groupRef = useRef(groups);
+  groupRef.current = groups;
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) =>
       setWidth(Math.max(1, Math.round(entry.contentRect.width))),
@@ -199,11 +226,23 @@ export default function Charts({
     if (!active) return;
     const controller = new AbortController();
     setLoading(true);
+    const chosen = groupRef.current.filter((group) =>
+      selected.includes(group.sensor.key),
+    );
+    const members = chartMemberKeys(groupRef.current, selected);
     client
       .request<ChartData>(
         {
           kind: "chart",
-          query: { sensors: selected, width, developer, ...range, filter },
+          query: {
+            sensors: members.length ? members : selected,
+            width:
+              width /
+              Math.max(1, ...chosen.map((group) => group.members.length)),
+            developer,
+            ...range,
+            filter,
+          },
         },
         controller.signal,
       )
@@ -211,23 +250,36 @@ export default function Charts({
         if (controller.signal.aborted) return;
         setData(next);
         setError("");
+        const nextGroups = groupSensors(next.sensors);
+        const keep = nextGroups
+          .filter(
+            (group) =>
+              selected.includes(group.sensor.key) ||
+              group.members.some((sensor) => selected.includes(sensor.key)),
+          )
+          .map((group) => group.sensor.key);
         if (!initialized.current) {
           initialized.current = true;
-        } else {
-          const keep = selected.filter((key) =>
-            next.sensors.some((s) => s.key === key),
-          );
-          const defaults = next.sensors
-            .filter((s) => ["20:3", "20:6", "20:2"].includes(s.key))
+          const defaults = nextGroups
+            .map((group) => group.sensor)
+            .filter((s) =>
+              ["20:3", "20:6", "20:2"].includes(
+                `${s.message ?? s.key.split(":")[0]}:${s.field ?? s.key.split(":")[1]}`,
+              ),
+            )
             .map((s) => s.key);
           setSelected(
             keep.length
               ? keep
               : defaults.length
                 ? defaults
-                : next.sensors.slice(0, 2).map((s) => s.key),
+                : nextGroups.slice(0, 2).map((group) => group.sensor.key),
           );
-        }
+        } else if (
+          keep.length !== selected.length ||
+          keep.some((key, index) => key !== selected[index])
+        )
+          setSelected(keep);
       })
       .catch((error) => {
         if (error.name !== "AbortError") setError(error.message);
@@ -242,10 +294,9 @@ export default function Charts({
     setSelected(values);
     savePreference("chartSensors", values);
   };
-  const available =
-    data?.sensors.filter((s) =>
-      s.name.toLowerCase().includes(search.toLowerCase()),
-    ) ?? [];
+  const available = groups
+    .map((group) => group.sensor)
+    .filter((s) => s.name.toLowerCase().includes(search.toLowerCase()));
   const references = reference
     .split(",")
     .map((v) => v.trim())
@@ -325,9 +376,13 @@ export default function Charts({
           <IconButton
             title="Download chart JSON"
             onClick={() =>
-              download({ format: "json", developer, sensors: selected })
+              download({
+                format: "json",
+                developer,
+                sensors: chartMemberKeys(groups, selected),
+              })
             }
-            disabled={!selected.length}
+            disabled={!selected.length || !groups.length}
           >
             <Download size={17} />
           </IconButton>
@@ -388,19 +443,34 @@ export default function Charts({
           </p>
         )}
         <div className="viewer-chart-plots">
-          {data?.sensors
-            .filter((s) => selected.includes(s.key))
-            .map((sensor) => (
-              <Plot
-                active={active}
-                sensor={sensor}
-                points={data.series[sensor.key] ?? []}
-                color={sensorColor(sensor.key)}
-                references={references}
-                onZoom={(start, end) => setRange({ start, end })}
-                key={sensor.key}
-              />
-            ))}
+          {groups
+            .filter((group) => selected.includes(group.sensor.key))
+            .map((group) => {
+              const sensor = group.sensor;
+              const traces = group.members.map((member) => ({
+                sensor: member,
+                points: data?.series[member.key] ?? [],
+                color: sensorColor(member.key),
+              }));
+              const points =
+                traces.length > 1
+                  ? traces
+                      .flatMap((trace) => trace.points)
+                      .sort((a, b) => a.time - b.time)
+                  : traces[0].points;
+              return (
+                <Plot
+                  active={active}
+                  sensor={sensor}
+                  points={points}
+                  traces={traces}
+                  color={sensorColor(sensor.key)}
+                  references={references}
+                  onZoom={(start, end) => setRange({ start, end })}
+                  key={sensor.key}
+                />
+              );
+            })}
           {!selected.length && (
             <p className="viewer-muted empty-table">No sensors selected.</p>
           )}

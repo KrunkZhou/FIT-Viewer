@@ -10,6 +10,7 @@
     "test:rewrite": "pnpm test",
     "typecheck": "tsc --noEmit",
     "bench:rewrite": "tsx scripts/benchmark-rewrite.ts",
+    "bench:archive": "tsx scripts/benchmark-archive.ts",
     "bench:motion": "tsx scripts/benchmark-motion.ts",
     "bench:motion:worker": "tsx scripts/benchmark-motion-worker.ts",
     "fixtures": "tsx scripts/generate-fixtures.ts",
