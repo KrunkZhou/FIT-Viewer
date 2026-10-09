@@ -11,6 +11,7 @@
     "!node_modules/**/*"
   ],
   "asar": true,
+  "afterPack": "build/after-pack.cjs",
   "npmRebuild": false,
   "artifactName": "FIT-Viewer-${version}-${os}-${arch}.${ext}",
   "mac": {
@@ -39,6 +40,17 @@
       "releaseType": "release"
     }
   },
+  "linux": {
+    "target": ["AppImage", "tar.gz"],
+    "icon": "public/icons/icon-512.png",
+    "executableName": "fit-viewer",
+    "syncDesktopName": true,
+    "category": "Utility",
+    "fileAssociations": [
+      { "ext": "fit", "name": "FIT activity", "mimeType": "application/x-fit" }
+    ]
+  },
+  "appImage": { "executableArgs": [] },
   "nsis": {
     "include": "build/installer.nsh",
     "artifactName": "FIT-Viewer-${version}-win-${arch}-setup.${ext}",

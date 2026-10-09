@@ -61,6 +61,7 @@ test("only installed packaged Windows apps offer native installation", () => {
   assert.equal(updateMode("win32", true, false), "install");
   assert.equal(updateMode("win32", true, true), "download");
   assert.equal(updateMode("darwin", true, false), "download");
+  assert.equal(updateMode("linux", true, false), "download");
   for (const platform of ["win32", "darwin", "linux"])
     assert.equal(updateMode(platform, false, false), "unavailable");
 });

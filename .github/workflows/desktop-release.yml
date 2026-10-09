@@ -82,6 +82,12 @@ jobs:
           - os: macos-15
             platform: mac
             arch: arm64
+          - os: ubuntu-24.04
+            platform: linux
+            arch: x64
+          - os: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     steps:
@@ -101,12 +107,24 @@ jobs:
         with:
           cache: true
       - run: pnpm install --frozen-lockfile
+      - name: Prepare Linux desktop tests
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends xvfb xauth libgtk-3-0t64 libnss3 libasound2t64 libgbm1
+          sandbox="$(node -p 'require("node:path").join(require("node:path").dirname(require("electron")), "chrome-sandbox")')"
+          sudo chown root:root "$sandbox"
+          sudo chmod 4755 "$sandbox"
       - name: Build desktop application
         run: pnpm run build:desktop
         env:
           RELEASE_VERSION: ${{ needs.validate.outputs.version }}
       - name: Check desktop renderer and document worker
+        if: runner.os != 'Linux'
         run: pnpm run test:desktop
+      - name: Check Linux renderer and document worker
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum pnpm run test:desktop
       - name: Package application
         run: pnpm run package:desktop --${{ matrix.platform }} --${{ matrix.arch }}
         env:
@@ -121,6 +139,8 @@ jobs:
             release/*.exe
             release/*.dmg
             release/*.zip
+            release/*.AppImage
+            release/*.tar.gz
             release/*.blockmap
             release/latest.yml
 
@@ -146,7 +166,7 @@ jobs:
         run: |
           cd release
           test -s latest.yml
-          sha256sum ./*.exe ./*.dmg ./*.zip ./*.blockmap latest.yml > SHA256SUMS.txt
+          sha256sum ./*.exe ./*.dmg ./*.zip ./*.AppImage ./*.tar.gz ./*.blockmap latest.yml > SHA256SUMS.txt
           test "$RELEASE_TAG" = "v$RELEASE_VERSION"
           if ! gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" --silent; then
             gh api --method POST "repos/$GH_REPO/git/refs" \
@@ -156,7 +176,7 @@ jobs:
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release create "$RELEASE_TAG" --verify-tag --target "$RELEASE_COMMIT" --draft --generate-notes \
               --title "$RELEASE_TAG" --prerelease=false \
-              --notes "Windows installer and portable builds are unsigned; macOS builds are ad-hoc signed and not notarized."
+              --notes "Windows installer and portable builds are unsigned; macOS builds are ad-hoc signed and not notarized. Linux x64 and ARM64 builds include AppImage and tar.gz packages."
           fi
-          gh release upload "$RELEASE_TAG" ./*.exe ./*.dmg ./*.zip ./*.blockmap latest.yml SHA256SUMS.txt --clobber
+          gh release upload "$RELEASE_TAG" ./*.exe ./*.dmg ./*.zip ./*.AppImage ./*.tar.gz ./*.blockmap latest.yml SHA256SUMS.txt --clobber
           gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --draft=false --prerelease=false
