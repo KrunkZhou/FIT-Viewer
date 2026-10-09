@@ -38,11 +38,13 @@ export function Toggle({
   checked,
   onChange,
   descriptionId,
+  disabled,
 }: {
   label: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
   descriptionId?: string;
+  disabled?: boolean;
 }) {
   return (
     <Switch.Root
@@ -50,6 +52,7 @@ export function Toggle({
       aria-label={label}
       aria-describedby={descriptionId}
       checked={checked}
+      disabled={disabled}
       onCheckedChange={onChange}
     >
       <Switch.Thumb />

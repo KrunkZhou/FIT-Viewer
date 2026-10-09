@@ -121,6 +121,8 @@ jobs:
             release/*.exe
             release/*.dmg
             release/*.zip
+            release/*.blockmap
+            release/latest.yml
 
   release:
     needs: [validate, build]
@@ -143,7 +145,8 @@ jobs:
           RELEASE_VERSION: ${{ needs.validate.outputs.version }}
         run: |
           cd release
-          sha256sum ./*.exe ./*.dmg ./*.zip > SHA256SUMS.txt
+          test -s latest.yml
+          sha256sum ./*.exe ./*.dmg ./*.zip ./*.blockmap latest.yml > SHA256SUMS.txt
           test "$RELEASE_TAG" = "v$RELEASE_VERSION"
           if ! gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" --silent; then
             gh api --method POST "repos/$GH_REPO/git/refs" \
@@ -155,5 +158,5 @@ jobs:
               --title "$RELEASE_TAG" --prerelease=false \
               --notes "Windows installer and portable builds are unsigned; macOS builds are ad-hoc signed and not notarized."
           fi
-          gh release upload "$RELEASE_TAG" ./*.exe ./*.dmg ./*.zip SHA256SUMS.txt --clobber
+          gh release upload "$RELEASE_TAG" ./*.exe ./*.dmg ./*.zip ./*.blockmap latest.yml SHA256SUMS.txt --clobber
           gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --draft=false --prerelease=false

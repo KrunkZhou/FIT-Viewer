@@ -105,6 +105,14 @@ test("Windows releases build installer and portable executables with distinct na
     (step: { name?: string }) => step.name === "Upload release files",
   );
   assert.ok(upload.with.path.split("\n").includes("release/*.exe"));
+  assert.ok(upload.with.path.split("\n").includes("release/*.blockmap"));
+  assert.ok(upload.with.path.split("\n").includes("release/latest.yml"));
+  assert.deepEqual(config.win.publish, {
+    provider: "github",
+    owner: "KrunkZhou",
+    repo: "FIT-Viewer",
+    releaseType: "release",
+  });
 });
 
 test("Intel macOS installs the pinned JavaScript pnpm CLI without a native bootstrap", () => {
@@ -200,6 +208,8 @@ test("publishing creates version tags at the exact commit, supports reruns, and 
       "test-portable.exe",
       "test.dmg",
       "test.zip",
+      "test-setup.exe.blockmap",
+      "latest.yml",
     ];
     for (const filename of filenames)
       writeFileSync(join(assets, filename), "fixture");
@@ -312,7 +322,12 @@ writeFileSync(stateFile, JSON.stringify(state));
       const upload = commands.find((args) => args[1] === "upload");
       if (upload)
         for (const filename of filenames)
-          assert.ok(upload.includes(`./${filename}`), filename);
+          assert.ok(
+            upload.includes(
+              filename === "latest.yml" ? filename : `./${filename}`,
+            ),
+            filename,
+          );
       assert.equal(
         commands.some((args) => args[1] === "edit"),
         scenario.matches,

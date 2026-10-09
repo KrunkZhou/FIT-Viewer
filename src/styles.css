@@ -78,6 +78,7 @@ h3 {
   line-height: 1.4;
 }
 .viewer-app-icon {
+  position: relative;
   display: grid;
   place-items: center;
   width: 32px;
@@ -88,6 +89,45 @@ h3 {
 }
 .viewer-app-icon img {
   display: block;
+}
+.viewer-update-badge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--viewer-background);
+  border-radius: 50%;
+  background: var(--viewer-accent);
+}
+.viewer-app-updates {
+  border-top: 1px solid var(--viewer-border);
+  padding: 12px 0;
+}
+.viewer-update-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+.viewer-update-status,
+.viewer-update-note {
+  color: var(--viewer-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  margin: 8px 0;
+}
+.viewer-update-status svg {
+  vertical-align: middle;
+  margin-right: 6px;
+}
+.viewer-update-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--viewer-accent);
 }
 .viewer-app-icon:hover,
 .viewer-app-icon[data-state="open"] {

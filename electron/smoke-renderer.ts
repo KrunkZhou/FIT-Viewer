@@ -73,7 +73,7 @@ export async function checkDesktopSelection(name: string, sources: number) {
   }
   if (
     !window.fitDesktop ||
-    Object.keys(window.fitDesktop).sort().join(",") !== "onOpen,release"
+    Object.keys(window.fitDesktop).sort().join(",") !== "onOpen,release,updates"
   )
     throw new Error("Desktop preload API is missing or overly broad");
   if (!document.querySelector("input[webkitdirectory]"))
@@ -114,8 +114,44 @@ export async function checkAppInformation(version: string) {
     link.rel !== "noopener noreferrer"
   )
     throw new Error("App information GitHub link is incorrect");
+  const updates = window.fitDesktop?.updates;
+  if (
+    !updates ||
+    Object.keys(updates).sort().join(",") !==
+      "check,getState,install,onChange,setEnabled"
+  )
+    throw new Error("Desktop updater bridge is missing or overly broad");
+  const before = await updates.getState();
+  if (before.mode !== "unavailable")
+    throw new Error("Smoke must not contact the release server");
+  const toggle = document.querySelector<HTMLButtonElement>(
+    '[role="switch"][aria-label="Automatic updates"]',
+  );
+  if (!toggle)
+    throw new Error("Update preference is missing from the header popup");
+  while (toggle.disabled) {
+    if (performance.now() > deadline)
+      throw new Error("Update preference did not load");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  toggle.click();
+  while (
+    (await updates.getState()).enabled === before.enabled ||
+    toggle.disabled
+  ) {
+    if (performance.now() > deadline)
+      throw new Error("Header update toggle did not persist");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  if (toggle.getAttribute("aria-checked") !== String(!before.enabled))
+    throw new Error(
+      "Header update toggle did not reflect the saved preference",
+    );
+  const after = await updates.setEnabled(before.enabled);
+  if (after.enabled !== before.enabled || after.revision <= before.revision)
+    throw new Error("Update preference state is inconsistent");
   document
     .querySelector<HTMLButtonElement>('[aria-label="Close app information"]')!
     .click();
-  return { version, icon: true, github: link.href };
+  return { version, icon: true, github: link.href, updateToggle: true };
 }

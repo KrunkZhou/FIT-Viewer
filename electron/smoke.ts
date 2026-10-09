@@ -11,6 +11,7 @@ import {
   checkRenderer,
 } from "./smoke-renderer";
 import { OpenFiles } from "./open-files";
+import { desktopUpdates } from "./updates";
 
 const profile = resolve(".cache/electron-smoke-profile");
 mkdirSync(profile, { recursive: true });
@@ -27,6 +28,7 @@ app
   .whenReady()
   .then(async () => {
     const files = new OpenFiles();
+    const updates = await desktopUpdates();
     const first = resolve(".cache/desktop-first.fit");
     const second = resolve(".cache/desktop-second.fit");
     await writeFile(first, activity(32));
@@ -36,7 +38,10 @@ app
     const window = await createWindow(
       false,
       resolve("desktop/preload.cjs"),
-      (window) => files.attach(window),
+      (window) => {
+        files.attach(window);
+        updates.attach(window);
+      },
     );
     smokeWindow = window;
     const initial = await window.webContents.executeJavaScript(

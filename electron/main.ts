@@ -3,6 +3,7 @@ import { createWindow, registerBundle } from "./app";
 import { launchFiles } from "./file-access";
 import { OpenFiles } from "./open-files";
 import { askFileAssociation } from "./windows-association";
+import { desktopUpdates } from "./updates";
 
 app.setName("FIT Viewer");
 app.setAppUserModelId("app.fitviewer.desktop");
@@ -10,6 +11,7 @@ const primary = app.requestSingleInstanceLock();
 if (!primary) app.quit();
 else {
   const files = new OpenFiles();
+  let updates: Awaited<ReturnType<typeof desktopUpdates>>;
   let pending = launchFiles(
     process.argv.slice(app.isPackaged ? 1 : 2),
     process.cwd(),
@@ -21,9 +23,10 @@ else {
     const existing = BrowserWindow.getAllWindows()[0];
     if (creating) return creating;
     if (existing) return Promise.resolve(existing);
-    creating = createWindow(true, undefined, (window) =>
-      files.attach(window),
-    ).finally(() => {
+    creating = createWindow(true, undefined, (window) => {
+      files.attach(window);
+      updates.attach(window);
+    }).finally(() => {
       creating = undefined;
     });
     return creating;
@@ -55,6 +58,7 @@ else {
     .whenReady()
     .then(async () => {
       await registerBundle(undefined, files.access);
+      updates = await desktopUpdates();
       const window = await ensureWindow();
       ready = true;
       await deliver();

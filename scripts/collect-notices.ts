@@ -2,18 +2,47 @@ import { execFileSync } from "node:child_process";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { resolve, relative } from "node:path";
 
-interface PackageNotice {
-  name: string;
-  versions: string[];
-  paths: string[];
-  license: string;
-  homepage?: string;
+interface DependencyNode {
+  path: string;
+  dependencies?: Record<string, DependencyNode>;
+  optionalDependencies?: Record<string, DependencyNode>;
 }
-const grouped = JSON.parse(
-  execFileSync("pnpm", ["licenses", "list", "--prod", "--json"], {
+// Read the installed graph rather than depending on pnpm's global store index.
+const projects = JSON.parse(
+  execFileSync("pnpm", ["list", "--prod", "--depth", "Infinity", "--json"], {
     encoding: "utf8",
   }),
-) as Record<string, PackageNotice[]>;
+) as DependencyNode[];
+const roots = new Set<string>();
+function collect(node: DependencyNode): void {
+  for (const child of Object.values({
+    ...node.dependencies,
+    ...node.optionalDependencies,
+  })) {
+    roots.add(child.path);
+    collect(child);
+  }
+}
+for (const project of projects) collect(project);
+const dependencies = new Map<
+  string,
+  {
+    name: string;
+    version: string;
+    license: string;
+    homepage?: string;
+    root: string;
+  }
+>();
+for (const root of roots) {
+  const metadata = JSON.parse(
+    await readFile(resolve(root, "package.json"), "utf8"),
+  );
+  dependencies.set(`${metadata.name}@${metadata.version}`, {
+    ...metadata,
+    root,
+  });
+}
 async function notices(directory: string, depth = 0): Promise<string[]> {
   const found: string[] = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
@@ -33,13 +62,13 @@ const output = [
   "Generated from installed production dependencies. Original license texts follow.",
 ];
 let count = 0;
-for (const dependency of Object.values(grouped)
-  .flat()
-  .sort((a, b) => a.name.localeCompare(b.name))) {
+for (const dependency of [...dependencies.values()].sort((a, b) =>
+  a.name.localeCompare(b.name),
+)) {
   output.push(
-    `\n${"=".repeat(72)}\n${dependency.name} ${dependency.versions.join(", ")}\nLicense: ${dependency.license}\n${dependency.homepage ?? ""}`,
+    `\n${"=".repeat(72)}\n${dependency.name} ${dependency.version}\nLicense: ${dependency.license ?? "See license text"}\n${dependency.homepage ?? ""}`,
   );
-  const root = dependency.paths[0];
+  const root = dependency.root;
   for (const path of await notices(root))
     output.push(`\n${relative(root, path)}\n${await readFile(path, "utf8")}`);
   count++;
