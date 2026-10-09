@@ -23,10 +23,16 @@ import type { DocumentClient } from "../document/client";
 import {
   IconButton,
   LoadingIndicator,
+  Toggle,
   readPreference,
   savePreference,
 } from "./controls";
-import { chartMemberKeys, groupSensors } from "./chart-groups";
+import {
+  chartMemberKeys,
+  groupMotionAxes,
+  groupSensors,
+  motionAxis,
+} from "./chart-groups";
 
 const COLORS = [
   "#176856",
@@ -37,9 +43,11 @@ const COLORS = [
   "#258b93",
   "#817164",
 ];
-function sensorColor(key: string): string {
+function sensorColor(sensor: Sensor): string {
+  const axis = motionAxis(sensor);
+  if (axis) return { X: COLORS[2], Y: COLORS[0], Z: COLORS[1] }[axis];
   let hash = 0;
-  for (const character of key)
+  for (const character of sensor.key)
     hash = (Math.imul(hash, 31) + character.charCodeAt(0)) >>> 0;
   return COLORS[hash % COLORS.length];
 }
@@ -206,6 +214,13 @@ export default function Charts({
     ),
   );
   const [search, setSearch] = useState("");
+  const [combineXYZ, setCombineXYZ] = useState(
+    readPreference(
+      "chartCombineXYZ",
+      true,
+      (v): v is boolean => typeof v === "boolean",
+    ),
+  );
   const [range, setRange] = useState<{ start?: number; end?: number }>({});
   const [filter, setFilter] = useState<{ min?: number; max?: number }>({});
   const [reference, setReference] = useState("");
@@ -220,6 +235,30 @@ export default function Charts({
   );
   const groupRef = useRef(groups);
   groupRef.current = groups;
+  const plots = useMemo(
+    () =>
+      groupMotionAxes(
+        groups.filter((group) => selected.includes(group.sensor.key)),
+        combineXYZ,
+      ).map((group) => {
+        const traces = group.members.map((member) => ({
+          sensor: member,
+          points: data?.series[member.key] ?? [],
+          color: sensorColor(member),
+        }));
+        return {
+          sensor: group.sensor,
+          traces,
+          points:
+            traces.length > 1
+              ? traces
+                  .flatMap((trace) => trace.points)
+                  .sort((a, b) => a.time - b.time)
+              : traces[0].points,
+        };
+      }),
+    [groups, selected, combineXYZ, data?.series],
+  );
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) =>
       setWidth(Math.max(1, Math.round(entry.contentRect.width))),
@@ -232,8 +271,9 @@ export default function Charts({
     const controller = new AbortController();
     setLoading(true);
     setError("");
-    const chosen = groupRef.current.filter((group) =>
-      selected.includes(group.sensor.key),
+    const chosen = groupMotionAxes(
+      groupRef.current.filter((group) => selected.includes(group.sensor.key)),
+      combineXYZ,
     );
     const members = chartMemberKeys(groupRef.current, selected);
     client
@@ -295,7 +335,7 @@ export default function Charts({
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [client, selected, width, developer, range, filter, active]);
+  }, [client, selected, width, developer, range, filter, active, combineXYZ]);
   const change = (values: string[]) => {
     initialized.current = true;
     setSelected(values);
@@ -363,7 +403,7 @@ export default function Charts({
               />
               <span
                 className="viewer-sensor-swatch"
-                style={{ background: sensorColor(sensor.key) }}
+                style={{ background: sensorColor(sensor) }}
               />
               <span className="viewer-sensor-name">{sensor.name}</span>
               <span className="viewer-muted">{sensor.units}</span>
@@ -374,6 +414,17 @@ export default function Charts({
       <div className="viewer-chart-content" ref={content} aria-busy={loading}>
         <div className="viewer-chart-toolbar">
           <h2 className="viewer-section-title">Activity charts</h2>
+          <label className="viewer-chart-combine">
+            Combine XYZ
+            <Toggle
+              label="Combine XYZ"
+              checked={combineXYZ}
+              onChange={(checked) => {
+                setCombineXYZ(checked);
+                savePreference("chartCombineXYZ", checked);
+              }}
+            />
+          </label>
           <IconButton
             title="Reset zoom"
             onClick={() => setRange({})}
@@ -453,34 +504,20 @@ export default function Charts({
         <div className="viewer-loading-region">
           {loading && <LoadingIndicator label="Loading chart data" />}
           <div className="viewer-chart-plots">
-            {groups
-              .filter((group) => selected.includes(group.sensor.key))
-              .map((group) => {
-                const sensor = group.sensor;
-                const traces = group.members.map((member) => ({
-                  sensor: member,
-                  points: data?.series[member.key] ?? [],
-                  color: sensorColor(member.key),
-                }));
-                const points =
-                  traces.length > 1
-                    ? traces
-                        .flatMap((trace) => trace.points)
-                        .sort((a, b) => a.time - b.time)
-                    : traces[0].points;
-                return (
-                  <Plot
-                    active={active}
-                    sensor={sensor}
-                    points={points}
-                    traces={traces}
-                    color={sensorColor(sensor.key)}
-                    references={references}
-                    onZoom={(start, end) => setRange({ start, end })}
-                    key={sensor.key}
-                  />
-                );
-              })}
+            {plots.map(({ sensor, traces, points }) => {
+              return (
+                <Plot
+                  active={active}
+                  sensor={sensor}
+                  points={points}
+                  traces={traces}
+                  color={sensorColor(sensor)}
+                  references={references}
+                  onZoom={(start, end) => setRange({ start, end })}
+                  key={sensor.key}
+                />
+              );
+            })}
             {!loading && !error && !selected.length && (
               <p className="viewer-muted empty-table">No sensors selected.</p>
             )}

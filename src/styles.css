@@ -587,6 +587,12 @@ th .viewer-icon-button {
 .viewer-chart-filter input {
   width: 76px;
 }
+.viewer-chart-combine {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
 .viewer-chart-references input {
   max-width: 180px;
 }
