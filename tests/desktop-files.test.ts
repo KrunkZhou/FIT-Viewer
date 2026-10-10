@@ -3,7 +3,7 @@ import test from "node:test";
 import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { FileAccess, launchFiles } from "../electron/file-access";
 import {
   FIT_PROG_ID,
@@ -28,30 +28,6 @@ test("launch arguments accept FIT and ZIP files without interpreting switches", 
   );
 });
 
-test("Linux launchers can supply local file URLs without accepting remote or malformed URLs", () => {
-  const fit = resolve(tmpdir(), "activity with spaces #1.fit");
-  const zip = resolve(tmpdir(), "activities.zip");
-  assert.deepEqual(
-    launchFiles(
-      [
-        pathToFileURL(fit).href,
-        fit,
-        pathToFileURL(zip).href,
-        "https://example.com/private.fit",
-        "smb://server/activity.fit",
-        "file://remote-host/activity.fit",
-        "file:///bad%2Fpath.fit",
-        "file:///activity.fit?query=1",
-        "file:///activity.fit#fragment",
-        "--inspect=file:///activity.fit",
-        "file:///notes.txt",
-      ],
-      tmpdir(),
-    ),
-    [fit, zip],
-  );
-});
-
 test("only this installed Windows build prompts, and a confirmed default is not nagged", () => {
   const base = {
     platform: "win32",
@@ -64,7 +40,6 @@ test("only this installed Windows build prompts, and a confirmed default is not 
   assert.equal(shouldPromptForAssociation(base), true);
   for (const change of [
     { platform: "darwin" },
-    { platform: "linux" },
     { packaged: false },
     { portable: true },
     { dismissed: true },

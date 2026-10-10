@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { lstat } from "node:fs/promises";
 import { basename, isAbsolute, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import {
   isDesktopFileUrl,
   MAX_INPUT_FILES,
@@ -11,20 +11,11 @@ import {
 export function launchFiles(args: string[], cwd: string): string[] {
   return [
     ...new Set(
-      args.flatMap((value) => {
-        if (value.startsWith("-")) return [];
-        if (/^file:/i.test(value)) {
-          try {
-            const url = new URL(value);
-            if (url.hostname || url.search || url.hash) return [];
-            value = fileURLToPath(url);
-          } catch {
-            return [];
-          }
-        } else if (/^[a-z][a-z\d+.-]*:\/\//i.test(value)) return [];
-        if (!/\.(fit|zip)$/i.test(value)) return [];
-        return [isAbsolute(value) ? value : resolve(cwd, value)];
-      }),
+      args
+        .filter(
+          (value) => !value.startsWith("-") && /\.(fit|zip)$/i.test(value),
+        )
+        .map((value) => (isAbsolute(value) ? value : resolve(cwd, value))),
     ),
   ];
 }

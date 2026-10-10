@@ -29,7 +29,6 @@ await writeFile(
       name: metadata.name,
       version,
       description: metadata.description,
-      desktopName: "fit-viewer.desktop",
       private: true,
       main: "main.cjs",
     },

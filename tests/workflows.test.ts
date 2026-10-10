@@ -49,7 +49,7 @@ test("Pages and desktop workflows use pinned actions, locked installs and scoped
       (entry: { platform: string; arch: string }) =>
         `${entry.platform}-${entry.arch}`,
     ),
-    ["win-x64", "mac-x64", "mac-arm64", "linux-x64", "linux-arm64"],
+    ["win-x64", "mac-x64", "mac-arm64"],
   );
   assert.equal(
     release.jobs.build.steps[0].with.ref,
@@ -134,51 +134,6 @@ test("Intel macOS installs the pinned JavaScript pnpm CLI without a native boots
   assert.ok(nodeIndex < release.jobs.build.steps.indexOf(fallback));
 });
 
-test("Linux releases use native runners, sandboxed headless tests, and portable packages", () => {
-  const config = JSON.parse(readFileSync("electron-builder.json", "utf8"));
-  assert.deepEqual(config.linux.target, ["AppImage", "tar.gz"]);
-  assert.equal(config.linux.executableName, "fit-viewer");
-  assert.equal(config.linux.syncDesktopName, true);
-  assert.match(
-    readFileSync("scripts/build-electron.mjs", "utf8"),
-    /desktopName: "fit-viewer\.desktop"/,
-  );
-  assert.equal(config.linux.icon, "public/icons/icon-512.png");
-  assert.equal(config.linux.fileAssociations[0].mimeType, "application/x-fit");
-  assert.deepEqual(config.appImage.executableArgs, []);
-  assert.equal(config.afterPack, "build/after-pack.cjs");
-  const release = workflow("desktop-release");
-  assert.deepEqual(
-    release.jobs.build.strategy.matrix.include.filter(
-      (entry: { platform: string }) => entry.platform === "linux",
-    ),
-    [
-      { os: "ubuntu-24.04", platform: "linux", arch: "x64" },
-      { os: "ubuntu-24.04-arm", platform: "linux", arch: "arm64" },
-    ],
-  );
-  const prepare = release.jobs.build.steps.find(
-    (step: { name?: string }) => step.name === "Prepare Linux desktop tests",
-  );
-  assert.equal(prepare.if, "runner.os == 'Linux'");
-  assert.match(prepare.run, /xvfb xauth/);
-  assert.match(prepare.run, /chown root:root "\$sandbox"/);
-  assert.match(prepare.run, /chmod 4755 "\$sandbox"/);
-  const smoke = release.jobs.build.steps.find(
-    (step: { name?: string }) =>
-      step.name === "Check Linux renderer and document worker",
-  );
-  assert.equal(smoke.if, "runner.os == 'Linux'");
-  assert.equal(smoke.run, "xvfb-run --auto-servernum pnpm run test:desktop");
-  const upload = release.jobs.build.steps.find(
-    (step: { name?: string }) => step.name === "Upload release files",
-  );
-  assert.ok(upload.with.path.split("\n").includes("release/*.AppImage"));
-  assert.ok(upload.with.path.split("\n").includes("release/*.tar.gz"));
-  assert.doesNotMatch(JSON.stringify(config), /--no-sandbox/);
-  assert.doesNotMatch(prepare.run, /sysctl|--no-sandbox/);
-});
-
 test("desktop release titles use the packaged version and clear prerelease status on reruns", () => {
   const release = workflow("desktop-release");
   assert.equal(
@@ -253,10 +208,6 @@ test("publishing creates version tags at the exact commit, supports reruns, and 
       "test-portable.exe",
       "test.dmg",
       "test.zip",
-      "test-linux-x64.AppImage",
-      "test-linux-arm64.AppImage",
-      "test-linux-x64.tar.gz",
-      "test-linux-arm64.tar.gz",
       "test-setup.exe.blockmap",
       "latest.yml",
     ];
