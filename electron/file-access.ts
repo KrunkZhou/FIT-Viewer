@@ -4,6 +4,7 @@ import { basename, isAbsolute, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   isDesktopFileUrl,
+  DESKTOP_IMPORT_LIMIT_BYTES,
   MAX_INPUT_FILES,
   type FileSet,
 } from "../src/document/input";
@@ -26,7 +27,7 @@ export class FileAccess {
     { path: string; size: number; mtime: number }
   >();
   private generation = 0;
-  constructor(private readonly maxBytes = 512 * 1048576) {}
+  constructor(private readonly maxBytes = DESKTOP_IMPORT_LIMIT_BYTES) {}
 
   async grant(paths: string[]): Promise<FileSet | undefined> {
     this.clear();
@@ -48,7 +49,9 @@ export class FileAccess {
       if (!stat.isFile()) throw new Error("Select a regular FIT or ZIP file.");
       total += stat.size;
       if (total > this.maxBytes)
-        throw new Error("The selected files exceed the desktop size limit.");
+        throw new Error(
+          `The selected files exceed the desktop size limit (${Math.round(this.maxBytes / 1048576)} MiB).`,
+        );
       const url = `fitviewer://app/import/${randomUUID()}`;
       next.set(url, { path, size: stat.size, mtime: stat.mtimeMs });
       files.push({ name: basename(path), size: stat.size, url });

@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { DocumentClient } from "./document/client";
 import { AppInfo } from "./ui/AppInfo";
-import type { DocumentInput } from "./document/input";
+import { importLimitBytes, type DocumentInput } from "./document/input";
 import { captureDrop, collectDrop } from "./ui/file-drop";
 import { Downloads } from "./ui/download";
 import type { DocumentSummary, ExportQuery } from "./model";
@@ -131,10 +131,13 @@ export default function App() {
     setSource("");
     let desktopUrls: string[] = [];
     try {
-      const config = Number(import.meta.env.VITE_MAX_FILE_MIB) || 512;
+      const limit = importLimitBytes(
+        Boolean(desktop),
+        import.meta.env.VITE_MAX_FILE_MIB,
+      );
       const file =
         typeof input === "function"
-          ? await input(controller.signal, config * 1048576)
+          ? await input(controller.signal, limit)
           : input;
       if ("files" in file)
         desktopUrls = file.files.flatMap((entry) =>
@@ -143,7 +146,7 @@ export default function App() {
       if (id !== generation.current || controller.signal.aborted) return;
       setSelectedName(file.name);
       const result = await client.open(file, {
-        limit: config * 1048576,
+        limit,
         signal: controller.signal,
         progress: (completed, total, phase) => {
           if (id === generation.current && !controller.signal.aborted)

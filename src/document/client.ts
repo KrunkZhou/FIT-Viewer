@@ -6,7 +6,7 @@ import type {
   WorkerRequest,
   WorkerResponse,
 } from "../model";
-import type { DocumentInput } from "./input";
+import { WEB_IMPORT_LIMIT_BYTES, type DocumentInput } from "./input";
 import {
   validationStartDocument,
   validationValue,
@@ -107,7 +107,7 @@ export class DocumentClient {
       {
         kind: "open",
         file,
-        limit: options.limit ?? 512 * 1048576,
+        limit: options.limit ?? WEB_IMPORT_LIMIT_BYTES,
       },
       options.signal,
       options.progress,

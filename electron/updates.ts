@@ -2,6 +2,7 @@ import {
   app,
   dialog,
   ipcMain,
+  shell,
   type BrowserWindow,
   type IpcMainInvokeEvent,
 } from "electron";
@@ -9,6 +10,8 @@ import { join } from "node:path";
 import { appNavigation } from "./resources";
 import { UpdateController } from "./update-controller";
 import { createUpdateBackend } from "./update-backend";
+import { UpdatePrompter, updatePromptOptions } from "./update-prompt";
+import { GITHUB_URL } from "../src/app-info";
 import {
   readUpdatePreference,
   writeUpdatePreference,
@@ -27,6 +30,23 @@ export async function desktopUpdates() {
     (enabled) => writeUpdatePreference(path, enabled),
   );
   let window: BrowserWindow | undefined;
+  const prompts = new UpdatePrompter({
+    state: () => controller.snapshot(),
+    canShow: () => !!window && !window.isDestroyed() && window.isFocused(),
+    async show(offer, signal) {
+      const parent = window;
+      if (!parent || parent.isDestroyed()) return false;
+      const { response } = await dialog.showMessageBox(parent, {
+        ...updatePromptOptions(offer),
+        signal,
+      });
+      return response === 0;
+    },
+    install: () => controller.install(),
+    download: (version) =>
+      shell.openExternal(`${GITHUB_URL}/releases/tag/v${version}`),
+    report: (error) => console.error("Could not show the update popup", error),
+  });
   const trusted = (event: IpcMainInvokeEvent) => {
     if (
       !window ||
@@ -51,40 +71,31 @@ export async function desktopUpdates() {
     trusted(event);
     return controller.check(true);
   });
-  let confirming = false;
   ipcMain.handle("updates:install", async (event) => {
     trusted(event);
-    if (confirming || controller.snapshot().phase !== "ready") return;
-    confirming = true;
-    try {
-      const { response } = await dialog.showMessageBox(window!, {
-        type: "question",
-        title: "Update FIT Viewer",
-        message: "Restart to install the update?",
-        detail: "Open files and current view selections will be closed.",
-        buttons: ["Restart to update", "Cancel"],
-        defaultId: 1,
-        cancelId: 1,
-        noLink: true,
-      });
-      if (response === 0 && controller.snapshot().phase === "ready")
-        controller.install();
-    } finally {
-      confirming = false;
-    }
+    if (controller.snapshot().phase === "ready") await prompts.request(true);
   });
   controller.subscribe((state) => {
     if (window && !window.isDestroyed())
       window.webContents.send("updates:changed", state);
+    prompts.notify();
   });
-  app.once("before-quit", () => controller.dispose());
+  app.once("before-quit", () => {
+    prompts.dispose();
+    controller.dispose();
+  });
   controller.start();
   return {
     attach(next: BrowserWindow) {
       window = next;
+      next.on("focus", () => prompts.notify());
       next.once("closed", () => {
-        if (window === next) window = undefined;
+        if (window === next) {
+          window = undefined;
+          prompts.cancel();
+        }
       });
+      prompts.notify();
     },
   };
 }

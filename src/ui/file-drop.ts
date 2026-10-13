@@ -30,7 +30,9 @@ export async function collectDrop(
     if (!isFitPath(name) && !/\.zip$/i.test(name)) return;
     total += file.size;
     if (total > limit)
-      throw new Error("The selected files exceed the configured size limit.");
+      throw new Error(
+        `The selected files exceed the configured size limit (${Math.round(limit / 1048576)} MiB).`,
+      );
     if (files.length >= MAX_INPUT_FILES)
       throw new Error(`Select no more than ${MAX_INPUT_FILES} FIT files.`);
     files.push(
