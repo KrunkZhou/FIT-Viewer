@@ -2,7 +2,7 @@
   "name": "fit-file-viewer-readable",
   "version": "0.0.0",
   "private": true,
-  "description": "Local FIT file viewer with tables, charts, maps and exports",
+  "description": "FIT Viewer",
   "type": "module",
   "packageManager": "pnpm@11.6.0",
   "scripts": {

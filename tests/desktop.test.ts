@@ -12,6 +12,14 @@ import {
   externalLink,
 } from "../electron/resources";
 
+test("desktop executable and launcher descriptions use the short app name", () => {
+  const metadata = JSON.parse(readFileSync("package.json", "utf8"));
+  const config = JSON.parse(readFileSync("electron-builder.json", "utf8"));
+  assert.equal(config.productName, "FIT Viewer");
+  // NSIS uses the package description for the portable/installer FileDescription.
+  assert.equal(metadata.description, config.productName);
+});
+
 test("desktop resources stay inside the compiled bundle and removed pages are not served", () => {
   const root = resolve("desktop/dist");
   assert.equal(

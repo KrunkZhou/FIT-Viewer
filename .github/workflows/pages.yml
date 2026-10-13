@@ -1,8 +1,16 @@
 name: GitHub Pages
 
 on:
-  push:
-    branches: ["**"]
+  workflow_call:
+    inputs:
+      commit:
+        description: "Exact commit shared with the desktop build"
+        required: true
+        type: string
+      version:
+        description: "Resolved desktop release version"
+        required: true
+        type: string
   workflow_dispatch:
 
 permissions:
@@ -23,6 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.commit || github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -43,6 +52,7 @@ jobs:
       - name: Build site
         run: pnpm run build
         env:
+          RELEASE_VERSION: ${{ inputs.version }}
           VITE_BASE_PATH: ${{ steps.pages.outputs.base_path }}/
       - name: Upload site
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0

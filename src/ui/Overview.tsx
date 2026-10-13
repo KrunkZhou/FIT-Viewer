@@ -36,10 +36,10 @@ export function Overview({
             </button>
             <button
               className="viewer-command"
-              title="Download QGIS GeoJSON"
+              title="Download GeoJSON"
               onClick={() => download({ format: "geojson" })}
             >
-              <FileJson2 size={16} /> QGIS GeoJSON
+              <FileJson2 size={16} /> GeoJSON
             </button>
           </div>
         )}

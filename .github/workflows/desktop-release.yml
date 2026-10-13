@@ -67,6 +67,18 @@ jobs:
       - run: pnpm run typecheck
       - run: pnpm test
 
+  pages:
+    needs: validate
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && !inputs.tag
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml
+    with:
+      commit: ${{ needs.validate.outputs.commit }}
+      version: ${{ needs.validate.outputs.version }}
+
   build:
     needs: validate
     strategy:
@@ -76,9 +88,9 @@ jobs:
           - os: windows-2025
             platform: win
             arch: x64
-          - os: macos-15-intel
-            platform: mac
-            arch: x64
+          # - os: macos-15-intel
+          #   platform: mac
+          #   arch: x64
           - os: macos-15
             platform: mac
             arch: arm64

@@ -122,7 +122,8 @@ test("overview hides GPS exports without usable positions and restores them for 
       )
     ).summary();
     const markup = render(summary);
-    assert.equal(markup.includes("QGIS GeoJSON"), summary.hasMap);
+    assert.equal(markup.includes("Download GeoJSON"), summary.hasMap);
+    assert.equal(markup.includes("QGIS"), false);
     assert.equal(markup.includes("Export GPX"), summary.hasMap);
   }
 });

@@ -94,8 +94,6 @@ export default function ActivityMap({
   const [pointTypes, setPointTypes] = useState<MapPoint["kind"][]>([
     "start",
     "finish",
-    "distance",
-    "waypoint",
   ]);
   const satelliteUrl = import.meta.env.VITE_MAP_SATELLITE_URL as
     string | undefined;
@@ -207,7 +205,7 @@ export default function ActivityMap({
               <Download size={17} />
             </IconButton>
             <IconButton
-              title="Download QGIS GeoJSON"
+              title="Download GeoJSON"
               onClick={() => download({ format: "geojson" })}
             >
               <FileJson2 size={17} />
@@ -390,30 +388,6 @@ export default function ActivityMap({
             </IconButton>
           </div>
           <div className="viewer-map-legend-scroll">
-            {data && data.tracks.length > 0 && (
-              <section>
-                <h3>Routes</h3>
-                {data.tracks.map((_, route) => (
-                  <label
-                    key={route}
-                    title={routeDescriptions[route]}
-                    {...legendEvents({ kind: "route", index: route })}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={routeVisible(route)}
-                      onChange={() => flipRoute(route)}
-                      aria-label={`Show ${routeName(route)}`}
-                    />
-                    <span
-                      className="map-route-swatch"
-                      style={{ background: COLORS[route % COLORS.length] }}
-                    />
-                    <span className="map-route-name">{routeName(route)}</span>
-                  </label>
-                ))}
-              </section>
-            )}
             <section>
               <h3>Points</h3>
               {POINT_TYPES.filter((type) =>
@@ -439,6 +413,30 @@ export default function ActivityMap({
                 </label>
               ))}
             </section>
+            {data && data.tracks.length > 0 && (
+              <section>
+                <h3>Routes</h3>
+                {data.tracks.map((_, route) => (
+                  <label
+                    key={route}
+                    title={routeDescriptions[route]}
+                    {...legendEvents({ kind: "route", index: route })}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={routeVisible(route)}
+                      onChange={() => flipRoute(route)}
+                      aria-label={`Show ${routeName(route)}`}
+                    />
+                    <span
+                      className="map-route-swatch"
+                      style={{ background: COLORS[route % COLORS.length] }}
+                    />
+                    <span className="map-route-name">{routeName(route)}</span>
+                  </label>
+                ))}
+              </section>
+            )}
             <section className="map-point-list">
               {data?.points.map(
                 (point, i) =>

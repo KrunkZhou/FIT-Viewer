@@ -26,13 +26,16 @@ test("Pages and desktop workflows use pinned actions, locked installs and scoped
     const config = workflow(name);
     assert.deepEqual(config.permissions, { contents: "read" });
     for (const job of Object.values(config.jobs) as {
-      steps: { uses?: string; run?: string }[];
-    }[])
-      for (const step of job.steps) {
+      uses?: string;
+      steps?: { uses?: string; run?: string }[];
+    }[]) {
+      if (job.uses) assert.equal(job.uses, "./.github/workflows/pages.yml");
+      for (const step of job.steps ?? []) {
         if (step.uses) assert.match(step.uses, /^[\w-]+\/[\w-]+@[a-f0-9]{40}$/);
         if (step.run?.startsWith("pnpm install"))
           assert.equal(step.run, "pnpm install --frozen-lockfile");
       }
+    }
   }
   const pages = workflow("pages");
   assert.deepEqual(pages.jobs.deploy.permissions, {
@@ -50,11 +53,51 @@ test("Pages and desktop workflows use pinned actions, locked installs and scoped
       (entry: { platform: string; arch: string }) =>
         `${entry.platform}-${entry.arch}`,
     ),
-    ["win-x64", "mac-x64", "mac-arm64"],
+    ["win-x64", "mac-arm64"],
   );
   assert.equal(
     release.jobs.build.steps[0].with.ref,
     "${{ needs.validate.outputs.commit }}",
+  );
+});
+
+test("Pages shares the desktop commit and resolved version instead of racing release tags", () => {
+  const pages = workflow("pages");
+  const release = workflow("desktop-release");
+  assert.equal(pages.on.push, undefined);
+  assert.ok(Object.hasOwn(pages.on, "workflow_dispatch"));
+  assert.deepEqual(pages.on.workflow_call.inputs.commit, {
+    description: "Exact commit shared with the desktop build",
+    required: true,
+    type: "string",
+  });
+  assert.equal(pages.on.workflow_call.inputs.version.required, true);
+  assert.equal(pages.on.workflow_call.inputs.version.type, "string");
+  const caller = release.jobs.pages;
+  assert.equal(caller.needs, "validate");
+  assert.equal(caller.uses, "./.github/workflows/pages.yml");
+  assert.match(caller.if, /repository\.default_branch/);
+  assert.match(caller.if, /!inputs\.tag/);
+  assert.deepEqual(caller.permissions, {
+    contents: "read",
+    pages: "write",
+    "id-token": "write",
+  });
+  assert.deepEqual(caller.with, {
+    commit: "${{ needs.validate.outputs.commit }}",
+    version: "${{ needs.validate.outputs.version }}",
+  });
+  assert.equal(
+    pages.jobs.build.steps[0].with.ref,
+    "${{ inputs.commit || github.sha }}",
+  );
+  const siteBuild = pages.jobs.build.steps.find(
+    (step: { name?: string }) => step.name === "Build site",
+  );
+  assert.equal(siteBuild.env.RELEASE_VERSION, "${{ inputs.version }}");
+  assert.equal(
+    siteBuild.env.VITE_BASE_PATH,
+    "${{ steps.pages.outputs.base_path }}/",
   );
 });
 
