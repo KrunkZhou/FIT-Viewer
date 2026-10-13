@@ -41,6 +41,7 @@ test("Pages and desktop workflows use pinned actions, locked installs and scoped
   });
   assert.equal(pages.jobs.deploy.needs, "build");
   assert.ok(pages.jobs.build.if.includes("repository.default_branch"));
+  assert.equal(pages.jobs.build.steps[0].with["fetch-depth"], 0);
   const release = workflow("desktop-release");
   assert.deepEqual(release.jobs.release.permissions, { contents: "write" });
   assert.deepEqual(release.jobs.release.needs, ["validate", "build"]);

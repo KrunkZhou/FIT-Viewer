@@ -23,7 +23,12 @@ import {
 } from "lucide-react";
 import { DocumentClient } from "./document/client";
 import { AppInfo } from "./ui/AppInfo";
-import { importLimitBytes, type DocumentInput } from "./document/input";
+import { ImportLimitDialog } from "./ui/ImportLimitDialog";
+import {
+  ImportSizeError,
+  importLimitBytes,
+  type DocumentInput,
+} from "./document/input";
 import { captureDrop, collectDrop } from "./ui/file-drop";
 import { Downloads } from "./ui/download";
 import type { DocumentSummary, ExportQuery } from "./model";
@@ -68,6 +73,7 @@ export default function App() {
     ),
   );
   const [error, setError] = useState("");
+  const [importLimit, setImportLimit] = useState<number>();
   const [notice, setNotice] = useState("");
   const [progress, setProgress] = useState<{ value: number; phase: string }>();
   const [busy, setBusy] = useState(false);
@@ -120,6 +126,7 @@ export default function App() {
     setExporting(false);
     setBusy(true);
     setError("");
+    setImportLimit(undefined);
     setNotice("");
     setSummary(undefined);
     setCsvQuery(undefined);
@@ -130,11 +137,11 @@ export default function App() {
     setWorkspace(undefined);
     setSource("");
     let desktopUrls: string[] = [];
+    const limit = importLimitBytes(
+      Boolean(desktop),
+      import.meta.env.VITE_MAX_FILE_MIB,
+    );
     try {
-      const limit = importLimitBytes(
-        Boolean(desktop),
-        import.meta.env.VITE_MAX_FILE_MIB,
-      );
       const file =
         typeof input === "function"
           ? await input(controller.signal, limit)
@@ -160,8 +167,10 @@ export default function App() {
       setVisited(["overview"]);
       setTarget(undefined);
     } catch (error) {
-      if (id === generation.current && (error as Error).name !== "AbortError")
+      if (id === generation.current && (error as Error).name !== "AbortError") {
         setError((error as Error).message);
+        if (!desktop && error instanceof ImportSizeError) setImportLimit(limit);
+      }
     } finally {
       window.fitDesktop?.release(desktopUrls);
       if (id === generation.current) {
@@ -581,6 +590,12 @@ export default function App() {
           </div>
         )}
       </main>
+      {importLimit !== undefined && (
+        <ImportLimitDialog
+          limit={importLimit}
+          onClose={() => setImportLimit(undefined)}
+        />
+      )}
       {csvQuery && (
         <Modal
           title="Format for timestamps in CSV"

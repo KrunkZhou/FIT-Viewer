@@ -1,4 +1,9 @@
-import { isFitPath, MAX_INPUT_FILES, type FileSet } from "../document/input";
+import {
+  ImportSizeError,
+  isFitPath,
+  MAX_INPUT_FILES,
+  type FileSet,
+} from "../document/input";
 
 export interface DroppedFiles {
   entries: FileSystemEntry[];
@@ -30,7 +35,7 @@ export async function collectDrop(
     if (!isFitPath(name) && !/\.zip$/i.test(name)) return;
     total += file.size;
     if (total > limit)
-      throw new Error(
+      throw new ImportSizeError(
         `The selected files exceed the configured size limit (${Math.round(limit / 1048576)} MiB).`,
       );
     if (files.length >= MAX_INPUT_FILES)

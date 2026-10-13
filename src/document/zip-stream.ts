@@ -1,5 +1,6 @@
 import type JSZip from "jszip";
 import type { Job } from "../model";
+import { ImportSizeError } from "./input";
 
 export async function zipChunks(
   stream: JSZip.JSZipStreamHelper<Uint8Array>,
@@ -27,7 +28,7 @@ export async function zipChunks(
         size += data.length;
         if (size > limit) {
           finish(
-            new Error(
+            new ImportSizeError(
               "Expanded FIT data exceeds the archive extraction limit.",
             ),
           );

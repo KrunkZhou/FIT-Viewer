@@ -243,7 +243,12 @@ export type WorkerResponsePayload =
         | null;
     }
   | { kind: "progress"; completed: number; total: number; phase: string }
-  | { kind: "error"; message: string; aborted?: boolean };
+  | {
+      kind: "error";
+      message: string;
+      aborted?: boolean;
+      code?: "import-size-limit";
+    };
 export type WorkerResponse = WorkerResponsePayload & {
   requestId: number;
   documentId: number;

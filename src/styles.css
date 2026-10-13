@@ -562,6 +562,22 @@ th .viewer-icon-button {
   border: 1px solid var(--viewer-border);
   border-radius: 6px;
 }
+.import-limit-message {
+  display: grid;
+  gap: 12px;
+  line-height: 1.5;
+}
+.import-limit-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+}
+.import-limit-actions a {
+  color: white;
+  text-decoration: none;
+}
 .filter-popup {
   background: var(--viewer-popup);
   border: 1px solid var(--viewer-border);

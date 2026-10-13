@@ -2,6 +2,13 @@ export const MAX_INPUT_FILES = 10000;
 export const WEB_IMPORT_LIMIT_BYTES = 512 * 1048576;
 export const DESKTOP_IMPORT_LIMIT_BYTES = 2048 * 1048576;
 
+export class ImportSizeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ImportSizeError";
+  }
+}
+
 export function importLimitBytes(
   desktop: boolean,
   webLimitMiB?: string,

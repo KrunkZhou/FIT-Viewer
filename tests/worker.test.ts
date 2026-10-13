@@ -72,6 +72,50 @@ test("document worker returns a complete GeoJSON download", async () => {
     await w.terminate();
   }
 });
+
+test("document worker reports typed file and ZIP size failures, but not for invalid FIT data", async () => {
+  const w = worker();
+  try {
+    const archive = await new JSZip()
+      .file("large.fit", new Uint8Array(20000))
+      .generateAsync({ type: "uint8array", compression: "DEFLATE" });
+    const cases = [
+      {
+        file: new File([new Uint8Array(20000)], "large.fit"),
+        code: "import-size-limit",
+      },
+      {
+        file: new File([archive.slice()], "large.zip"),
+        code: "import-size-limit",
+      },
+      { file: new File(["invalid"], "invalid.fit"), code: undefined },
+    ];
+    for (const [index, { file, code }] of cases.entries()) {
+      const requestId = index + 1;
+      const pending = wait(
+        w,
+        (message) =>
+          message.requestId === requestId && message.kind !== "progress",
+      );
+      w.postMessage({
+        kind: "open",
+        file,
+        filename: file.name,
+        limit: 10000,
+        requestId,
+        documentId: requestId,
+      } satisfies WorkerRequest);
+      const response = await pending;
+      assert.equal(response.kind, "error");
+      if (response.kind !== "error")
+        throw new Error("Expected worker rejection");
+      assert.equal(response.code, code);
+      assert.equal(response.aborted, false);
+    }
+  } finally {
+    await w.terminate();
+  }
+});
 test("worker rejects stale documents and supports queries while exporting", async () => {
   const w = worker();
   try {

@@ -6,7 +6,11 @@ import type {
   WorkerRequest,
   WorkerResponse,
 } from "../model";
-import { WEB_IMPORT_LIMIT_BYTES, type DocumentInput } from "./input";
+import {
+  ImportSizeError,
+  WEB_IMPORT_LIMIT_BYTES,
+  type DocumentInput,
+} from "./input";
 import {
   validationStartDocument,
   validationValue,
@@ -56,7 +60,9 @@ export class DocumentClient {
         pending.reject(
           message.aborted
             ? new DOMException(message.message, "AbortError")
-            : new Error(message.message),
+            : message.code === "import-size-limit"
+              ? new ImportSizeError(message.message)
+              : new Error(message.message),
         );
       else pending.resolve(message.result);
     };

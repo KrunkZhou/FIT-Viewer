@@ -2,6 +2,7 @@ import type { WorkerRequest, WorkerResponsePayload } from "../model";
 import { FitDocument } from "./document";
 import { createJob } from "./jobs";
 import { loadFile } from "./files";
+import { ImportSizeError } from "./input";
 import { chart, mapData } from "./series";
 import { exportDocument } from "../export/export";
 import { addSummaryDiagnostics } from "../repair/repair";
@@ -132,6 +133,7 @@ scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     send({
       kind: "error",
       message: (error as Error).message,
+      code: error instanceof ImportSizeError ? "import-size-limit" : undefined,
       aborted:
         controller.signal.aborted || (error as Error).name === "AbortError",
     });

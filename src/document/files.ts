@@ -2,6 +2,7 @@ import JSZip from "jszip";
 import type { Job } from "../model";
 import { zipChunks } from "./zip-stream";
 import {
+  ImportSizeError,
   isDesktopFileUrl,
   isFitPath,
   MAX_INPUT_FILES,
@@ -29,7 +30,7 @@ export async function loadFile(
   if (!files.length || files.length > MAX_INPUT_FILES)
     throw new Error("Invalid number of selected files.");
   if (files.reduce((size, file) => size + file.size, 0) > limit)
-    throw new Error(
+    throw new ImportSizeError(
       `The selected files exceed the ${Math.round(limit / 1048576)} MiB limit.`,
     );
   const sources: SourceInput[] = [];
@@ -63,7 +64,7 @@ async function loadSingleFile(
   job: Job,
 ): Promise<LoadedFile> {
   if (file.size > limit)
-    throw new Error(
+    throw new ImportSizeError(
       `The selected file exceeds the ${Math.round(limit / 1048576)} MiB limit.`,
     );
   let buffer: ArrayBuffer;
