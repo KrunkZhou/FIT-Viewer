@@ -1,5 +1,4 @@
 import type { CiqDictionary } from "./protocol/ciq-settings";
-import type { OutBinInventory } from "./protocol/out-bin";
 
 export type Scalar = number | bigint | string | null;
 export type RawValue = Scalar | Scalar[];
@@ -98,12 +97,6 @@ export interface DocumentSummary {
   hasHrv: boolean;
   repairable: boolean;
   ciqSettings?: CiqSettingsFile[];
-  appInventories?: AppInventoryFile[];
-}
-export interface AppInventoryFile {
-  source: number;
-  filename: string;
-  inventory: OutBinInventory;
 }
 export interface CiqSettingsFile {
   source: number;

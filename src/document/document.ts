@@ -1,6 +1,5 @@
 import { Profile } from "@garmin/fitsdk";
 import type {
-  AppInventoryFile,
   Cell,
   CiqSettingsFile,
   Definition,
@@ -24,7 +23,7 @@ import { positionCoordinates, positionFields } from "./positions";
 import { readWorkspace } from "./workspace";
 import { FIT_EPOCH, localDateKey } from "../protocol/time";
 import type { SourceInput } from "./files";
-import { isOutBinPath, isSetPath } from "./input";
+import { isSetPath } from "./input";
 import hrUtility from "@garmin/fitsdk/src/utils-hr-mesg.js";
 
 export class FitDocument {
@@ -57,7 +56,6 @@ export class FitDocument {
       },
     ],
     readonly ciqSettings: CiqSettingsFile[] = [],
-    readonly appInventories: AppInventoryFile[] = [],
   ) {
     this.metadata = new Metadata(index);
     this.messageInfo = Array.from(index.messages, ([id, records]) => ({
@@ -74,7 +72,7 @@ export class FitDocument {
     filename: string,
     job = idleJob(),
   ): Promise<FitDocument> {
-    if (isSetPath(filename) || isOutBinPath(filename))
+    if (isSetPath(filename))
       return FitDocument.openSources([{ filename, bytes }], filename, job);
     const document = new FitDocument(await readFit(bytes, job), filename);
     await document.buildDerived(job);
@@ -85,22 +83,11 @@ export class FitDocument {
     filename: string,
     job = idleJob(),
   ): Promise<FitDocument> {
-    if (
-      sources.length === 1 &&
-      !isSetPath(sources[0].filename) &&
-      !isOutBinPath(sources[0].filename)
-    ) {
-      const index = await readFit(sources[0].bytes, job);
-      const document = new FitDocument(index, filename, [
-        {
-          id: 0,
-          filename: sources[0].filename,
-          bytes: index.bytes.length,
-          start: 0,
-          end: index.bytes.length,
-          records: index.records.length,
-        },
-      ]);
+    if (sources.length === 1 && !isSetPath(sources[0].filename)) {
+      const document = new FitDocument(
+        await readFit(sources[0].bytes, job),
+        filename,
+      );
       await document.buildDerived(job);
       return document;
     }
@@ -112,7 +99,6 @@ export class FitDocument {
       filename,
       workspace.sources,
       workspace.ciqSettings,
-      workspace.appInventories,
     );
     await document.buildDerived(job);
     return document;
@@ -159,7 +145,6 @@ export class FitDocument {
           ),
         ),
         ...(this.ciqSettings.length ? ["Connect IQ settings"] : []),
-        ...(this.appInventories.length ? ["Garmin app inventory"] : []),
       ],
       messages: this.messageInfo,
       subfiles: this.index.subfiles,
@@ -170,9 +155,6 @@ export class FitDocument {
       hasHrv: this.index.messages.has(78) || this.index.messages.has(132),
       repairable: this.index.diagnostics.some((d) => d.repair !== "none"),
       ...(this.ciqSettings.length ? { ciqSettings: this.ciqSettings } : {}),
-      ...(this.appInventories.length
-        ? { appInventories: this.appInventories }
-        : {}),
     };
   }
   raw(id: number): Record<string, RawValue> {

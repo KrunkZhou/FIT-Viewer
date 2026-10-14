@@ -108,10 +108,7 @@ test("desktop grants read only OS-selected files and expire on release/replaceme
     );
     await assert.rejects(new FileAccess(1).grant([path]), /size limit/);
     await assert.rejects(access.grant([join(root, "empty")]), /ENOENT/);
-    await assert.rejects(
-      access.grant(["relative.fit"]),
-      /FIT, SET, OUT\.BIN or ZIP/,
-    );
+    await assert.rejects(access.grant(["relative.fit"]), /FIT, SET or ZIP/);
     if (process.platform !== "win32") {
       const link = join(root, "link.fit");
       await symlink(path, link);
@@ -217,10 +214,7 @@ test("desktop folder arguments recursively combine FIT files with private URLs a
     );
     const empty = join(root, "empty");
     await mkdir(empty);
-    await assert.rejects(
-      access.grant([empty]),
-      /no FIT, SET or OUT\.BIN files/,
-    );
+    await assert.rejects(access.grant([empty]), /no FIT or SET files/);
     access.clear();
   } finally {
     await rm(root, { recursive: true, force: true });

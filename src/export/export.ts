@@ -50,8 +50,6 @@ export async function exportDocument(
   const parts: BlobPart[] = [];
   const encoder = new TextEncoder();
   if (query.format === "fit") {
-    if (document.appInventories.length && !document.index.subfiles.length)
-      throw new Error("App inventory files cannot be repaired as FIT files.");
     if (document.ciqSettings.length && !document.index.subfiles.length)
       throw new Error("CIQ settings files cannot be repaired as FIT files.");
     if (document.sources.length > 1) return repairArchive(document, job);

@@ -11,14 +11,6 @@ export function Overview({
   const issues = summary.diagnosticCount;
   const hasFit = summary.subfiles.length > 0;
   const settings = summary.ciqSettings ?? [];
-  const inventories = summary.appInventories ?? [];
-  const inventoriesBySource = new Map(
-    inventories.map((file) => [file.source, file.inventory]),
-  );
-  const inventoryApps = inventories.reduce(
-    (count, file) => count + file.inventory.entries.length,
-    0,
-  );
   const settingsBySource = new Map(
     settings.map((file) => [file.source, file.settings]),
   );
@@ -43,7 +35,7 @@ export function Overview({
     <section className="overview-content">
       <h2 className="viewer-section-title">File overview</h2>
       <dl
-        className={`viewer-metrics${hasFit ? "" : " viewer-metrics-settings"}${!hasFit && settings.length && inventories.length ? " viewer-metrics-mixed" : ""}`}
+        className={`viewer-metrics${hasFit ? "" : " viewer-metrics-settings"}`}
       >
         {hasFit && (
           <>
@@ -123,18 +115,6 @@ export function Overview({
             <div>
               <dt>Settings properties</dt>
               <dd>{settingsProperties.toLocaleString()}</dd>
-            </div>
-          </>
-        )}
-        {!hasFit && inventories.length > 0 && (
-          <>
-            <div>
-              <dt>Inventory files</dt>
-              <dd>{inventories.length.toLocaleString()}</dd>
-            </div>
-            <div>
-              <dt>Apps</dt>
-              <dd>{inventoryApps.toLocaleString()}</dd>
             </div>
           </>
         )}
@@ -221,18 +201,6 @@ export function Overview({
             </div>
           </>
         )}
-        {hasFit && inventories.length > 0 && (
-          <>
-            <div>
-              <dt>Inventory files</dt>
-              <dd>{inventories.length.toLocaleString()}</dd>
-            </div>
-            <div>
-              <dt>Apps</dt>
-              <dd>{inventoryApps.toLocaleString()}</dd>
-            </div>
-          </>
-        )}
       </dl>
       {summary.sources.length > 1 && (
         <details className="viewer-source-files">
@@ -249,7 +217,6 @@ export function Overview({
                   <th>Size</th>
                   <th>Records</th>
                   {settings.length > 0 && <th>Settings properties</th>}
-                  {inventories.length > 0 && <th>Apps</th>}
                   <th>Status</th>
                 </tr>
               </thead>
@@ -259,21 +226,13 @@ export function Overview({
                     <td title={source.filename}>{source.filename}</td>
                     <td>{source.bytes.toLocaleString()} bytes</td>
                     <td>
-                      {settingsBySource.has(source.id) ||
-                      inventoriesBySource.has(source.id)
+                      {settingsBySource.has(source.id)
                         ? "-"
                         : source.records.toLocaleString()}
                     </td>
                     {settings.length > 0 && (
                       <td>
                         {settingsBySource
-                          .get(source.id)
-                          ?.entries.length.toLocaleString() ?? "-"}
-                      </td>
-                    )}
-                    {inventories.length > 0 && (
-                      <td>
-                        {inventoriesBySource
                           .get(source.id)
                           ?.entries.length.toLocaleString() ?? "-"}
                       </td>

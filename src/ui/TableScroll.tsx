@@ -3,11 +3,9 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 export function TableScroll({
   children,
   compact = false,
-  label = "Scrollable message table",
 }: {
   children: ReactNode;
   compact?: boolean;
-  label?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [edges, setEdges] = useState({ left: false, right: false });
@@ -45,7 +43,7 @@ export function TableScroll({
         data-slot={compact ? undefined : "table-container"}
         className={compact ? "single-entry-table-scroll" : "table-scroll"}
         tabIndex={0}
-        aria-label={label}
+        aria-label="Scrollable message table"
       >
         {children}
       </div>

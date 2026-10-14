@@ -6,14 +6,12 @@ import { app, type BrowserWindow } from "electron";
 import { createWindow, registerBundle } from "./app";
 import { activity } from "../tests/fixtures";
 import { syntheticSettings } from "../tests/ciq-fixtures";
-import { outBinFixture } from "../tests/out-bin-fixtures";
 import {
   checkAppInformation,
   checkCiqRenderer,
   checkDesktopSelection,
   checkDesktopNotifications,
   checkMapTimeline,
-  checkOutBinRenderer,
   checkRenderer,
 } from "./smoke-renderer";
 import { OpenFiles } from "./open-files";
@@ -98,21 +96,13 @@ app
     );
     const ciqImage = await window.webContents.capturePage();
     await writeFile(".cache/electron-ciq-smoke.png", ciqImage.toPNG());
-    const inventory = await window.webContents.executeJavaScript(
-      `(${checkOutBinRenderer.toString()})(${JSON.stringify(Array.from(outBinFixture()))}, ${JSON.stringify(Array.from(syntheticSettings()))}, ${JSON.stringify(bytes)})`,
-    );
-    const inventoryImage = await window.webContents.capturePage();
-    await writeFile(
-      ".cache/electron-out-bin-smoke.png",
-      inventoryImage.toPNG(),
-    );
     await window.webContents.executeJavaScript(
       `(${checkRenderer.toString()})(${JSON.stringify(bytes)})`,
     );
     const image = await window.webContents.capturePage();
     await writeFile(".cache/electron-smoke.png", image.toPNG());
     console.log(
-      `Desktop smoke passed: ${JSON.stringify({ ...result, initial, replacement, info, prompts, ciq, timeline, inventory })}`,
+      `Desktop smoke passed: ${JSON.stringify({ ...result, initial, replacement, info, prompts, ciq, timeline })}`,
     );
     clearTimeout(timeout);
     window.destroy();
