@@ -101,18 +101,22 @@ export class FileAccess {
         return;
       }
       if (!stat.isFile())
-        throw new Error("Select a regular FIT, SET or ZIP file or folder.");
+        throw new Error(
+          "Select a regular FIT, SET, OUT.BIN or ZIP file or folder.",
+        );
       if (
         nested
           ? !isDocumentPath(name)
           : !isDocumentPath(path) && !isZipPath(path)
       )
-        throw new Error("Only FIT, SET or ZIP files or folders can be opened.");
+        throw new Error(
+          "Only FIT, SET, OUT.BIN or ZIP files or folders can be opened.",
+        );
       if (seen.has(path)) return;
       seen.add(path);
       if (files.length >= MAX_INPUT_FILES)
         throw new Error(
-          `Select no more than ${MAX_INPUT_FILES} FIT or SET files.`,
+          `Select no more than ${MAX_INPUT_FILES} FIT, SET or OUT.BIN files.`,
         );
       total += stat.size;
       if (total > this.maxBytes)
@@ -126,13 +130,15 @@ export class FileAccess {
     for (const path of unique) {
       if (!isAbsolute(path))
         throw new Error(
-          "Only absolute FIT, SET or ZIP file or folder paths can be opened.",
+          "Only absolute FIT, SET, OUT.BIN or ZIP file or folder paths can be opened.",
         );
       await visit(resolve(path), basename(path), 0, false);
       if (!active()) return;
     }
     if (!files.length)
-      throw new Error("The selected folders contain no FIT or SET files.");
+      throw new Error(
+        "The selected folders contain no FIT, SET or OUT.BIN files.",
+      );
     files.sort((a, b) => a.name.localeCompare(b.name));
     this.files = next;
     return {

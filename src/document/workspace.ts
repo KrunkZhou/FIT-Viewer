@@ -1,8 +1,15 @@
-import type { CiqSettingsFile, Definition, Job, SourceInfo } from "../model";
+import type {
+  AppInventoryFile,
+  CiqSettingsFile,
+  Definition,
+  Job,
+  SourceInfo,
+} from "../model";
 import { type FitIndex, rawRecord, readFit } from "../protocol/reader";
 import { readCiqSettings } from "../protocol/ciq-settings";
+import { readOutBin } from "../protocol/out-bin";
 import type { SourceInput } from "./files";
-import { isSetPath } from "./input";
+import { isOutBinPath, isSetPath } from "./input";
 
 export async function readWorkspace(
   sources: SourceInput[],
@@ -11,6 +18,7 @@ export async function readWorkspace(
   index: FitIndex;
   sources: SourceInfo[];
   ciqSettings: CiqSettingsFile[];
+  appInventories: AppInventoryFile[];
 }> {
   const bytes = new Uint8Array(
     sources.reduce((size, source) => size + source.bytes.length, 0),
@@ -35,6 +43,7 @@ export async function readWorkspace(
   };
   const info: SourceInfo[] = [];
   const ciqSettings: CiqSettingsFile[] = [];
+  const appInventories: AppInventoryFile[] = [];
   offset = 0;
   for (const [id, source] of sources.entries()) {
     const entry: SourceInfo = {
@@ -47,6 +56,21 @@ export async function readWorkspace(
     };
     info.push(entry);
     try {
+      if (isOutBinPath(source.filename)) {
+        const inventory = await readOutBin(
+          bytes.subarray(entry.start, entry.end),
+          job,
+        );
+        appInventories.push({
+          source: id,
+          filename: source.filename,
+          inventory,
+        });
+        offset = entry.end;
+        job.progress(id + 1, sources.length, "Reading app inventory");
+        await job.yield();
+        continue;
+      }
       if (isSetPath(source.filename)) {
         const settings = await readCiqSettings(
           bytes.subarray(entry.start, entry.end),
@@ -140,5 +164,5 @@ export async function readWorkspace(
     job.progress(id + 1, sources.length, "Reading ZIP entries");
     await job.yield();
   }
-  return { index, sources: info, ciqSettings };
+  return { index, sources: info, ciqSettings, appInventories };
 }

@@ -1,4 +1,170 @@
 // Electron executes these serialized functions in the isolated renderer.
+export async function checkOutBinRenderer(
+  inventoryBytes: number[],
+  settingsBytes: number[],
+  fitBytes: number[],
+) {
+  const waitFor = async (predicate: () => boolean, stage: string) => {
+    const deadline = performance.now() + 10000;
+    while (!predicate()) {
+      if (performance.now() > deadline)
+        throw new Error(`OUT.BIN smoke timed out: ${stage}`);
+      await new Promise<void>((resolve) => setTimeout(resolve, 25));
+    }
+  };
+  const tab = (id: string) => document.getElementById(`tab-${id}`);
+  const open = (files: File[]) => {
+    const data = new DataTransfer();
+    files.forEach((file) => data.items.add(file));
+    const input =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    if (!input.accept.split(",").includes(".bin"))
+      throw new Error("BIN picker filter missing");
+    input.files = data.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+  const inventory = () => new File([new Uint8Array(inventoryBytes)], "OUT.BIN");
+  const settings = () =>
+    new File([new Uint8Array(settingsBytes)], "example.SET");
+  const fit = () => new File([new Uint8Array(fitBytes)], "inventory-run.fit");
+  const rows = () =>
+    document.querySelector('table[aria-label="Apps in OUT.BIN"] tbody')
+      ?.children.length;
+  open([inventory()]);
+  await waitFor(
+    () =>
+      document.querySelector(".viewer-file h2")?.textContent === "OUT.BIN" &&
+      rows() === 5,
+    "standalone inventory",
+  );
+  if (tab("inventory")?.getAttribute("aria-selected") !== "true")
+    throw new Error("OUT.BIN did not open App Inventory");
+  if (tab("messages") || tab("settings") || tab("chart") || tab("map"))
+    throw new Error("OUT.BIN exposed unrelated tabs");
+  if (
+    !document
+      .querySelector(".viewer-app-inventory")
+      ?.textContent?.includes("9876543210")
+  )
+    throw new Error("Inventory metadata missing");
+  const search = document.querySelector<HTMLInputElement>(
+    'input[aria-label="Search apps in OUT.BIN"]',
+  )!;
+  const setSearch = (value: string) => {
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )!.set!.call(search, value);
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+  };
+  setSearch("Heart Rate");
+  await waitFor(
+    () =>
+      rows() === 1 &&
+      !!document
+        .querySelector('table[aria-label="Apps in OUT.BIN"] tbody')
+        ?.textContent?.includes("Heart Rate"),
+    "inventory search",
+  );
+  setSearch("");
+  await waitFor(() => rows() === 5, "cleared search");
+  const details = document.querySelector<HTMLElement>(
+    'table[aria-label="Apps in OUT.BIN"] tbody details summary',
+  )!;
+  details.click();
+  await waitFor(
+    () =>
+      !!document
+        .querySelector('table[aria-label="Apps in OUT.BIN"] tbody')
+        ?.textContent?.includes("1234567890123"),
+    "app details and exact file size",
+  );
+  details.click();
+  open([inventory(), settings(), fit()]);
+  await waitFor(
+    () =>
+      document.querySelector(".viewer-file h2")?.textContent === "3 files" &&
+      !!tab("inventory") &&
+      !!tab("settings") &&
+      !!tab("messages"),
+    "mixed inventory, settings and FIT",
+  );
+  if (tab("overview")?.getAttribute("aria-selected") !== "true")
+    throw new Error("Mixed import did not select overview");
+  const select = document.querySelector<HTMLSelectElement>(
+    'select[aria-label="Source file"]',
+  )!;
+  const selectSource = (filename: string) => {
+    const option = Array.from(select.options).find(
+      (option) => option.textContent === filename,
+    );
+    if (!option) throw new Error(`Missing source: ${filename}`);
+    select.value = option.value;
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+  selectSource("OUT.BIN");
+  await waitFor(
+    () =>
+      document.querySelector(".viewer-file h2")?.textContent === "OUT.BIN" &&
+      !!tab("inventory") &&
+      !tab("settings") &&
+      !tab("messages"),
+    "inventory source",
+  );
+  selectSource("example.SET");
+  await waitFor(
+    () =>
+      document.querySelector(".viewer-file h2")?.textContent ===
+        "example.SET" &&
+      !!tab("settings") &&
+      !tab("inventory"),
+    "settings source",
+  );
+  selectSource("inventory-run.fit");
+  await waitFor(
+    () =>
+      document.querySelector(".viewer-file h2")?.textContent ===
+        "inventory-run.fit" &&
+      !!tab("messages") &&
+      !tab("inventory") &&
+      !tab("settings"),
+    "FIT source",
+  );
+  select.value = "";
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+  await waitFor(
+    () =>
+      document.querySelector(".viewer-file h2")?.textContent === "3 files" &&
+      !!tab("inventory"),
+    "combined restoration",
+  );
+  open([fit()]);
+  await waitFor(
+    () =>
+      document.querySelector(".viewer-file h2")?.textContent ===
+        "inventory-run.fit" &&
+      !!tab("messages") &&
+      !tab("inventory"),
+    "replacement clears inventory",
+  );
+  open([inventory()]);
+  await waitFor(
+    () =>
+      document.querySelector(".viewer-file h2")?.textContent === "OUT.BIN" &&
+      rows() === 5,
+    "inventory screenshot",
+  );
+  return {
+    standalone: true,
+    rows: 5,
+    search: true,
+    details: true,
+    mixed: true,
+    sourceSelection: true,
+    replacement: true,
+  };
+}
+
 export async function checkCiqRenderer(
   settingsBytes: number[],
   fitBytes: number[],
@@ -22,13 +188,14 @@ export async function checkCiqRenderer(
     input.files = data.files;
     input.dispatchEvent(new Event("change", { bubbles: true }));
   };
-  const settings = () => new File([new Uint8Array(settingsBytes)], "example.SET");
+  const settings = () =>
+    new File([new Uint8Array(settingsBytes)], "example.SET");
   const fit = () => new File([new Uint8Array(fitBytes)], "ciq-run.fit");
   open([settings()]);
   await waitFor(
     () =>
-      document.querySelector(".viewer-file h2")?.textContent === "example.SET" &&
-      !!tab("settings"),
+      document.querySelector(".viewer-file h2")?.textContent ===
+        "example.SET" && !!tab("settings"),
     "standalone settings",
   );
   if (tab("settings")?.getAttribute("aria-selected") !== "true")
@@ -69,8 +236,8 @@ export async function checkCiqRenderer(
   select.dispatchEvent(new Event("change", { bubbles: true }));
   await waitFor(
     () =>
-      document.querySelector(".viewer-file h2")?.textContent === "example.SET" &&
-      !!tab("settings"),
+      document.querySelector(".viewer-file h2")?.textContent ===
+        "example.SET" && !!tab("settings"),
     "settings source selection",
   );
   select.value = sourceValue("ciq-run.fit");
@@ -103,7 +270,8 @@ export async function checkCiqRenderer(
   open([settings()]);
   await waitFor(
     () =>
-      document.querySelector(".viewer-file h2")?.textContent === "example.SET" &&
+      document.querySelector(".viewer-file h2")?.textContent ===
+        "example.SET" &&
       document.querySelectorAll(".viewer-ciq-file tbody tr").length === 6,
     "settings screenshot",
   );

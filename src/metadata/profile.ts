@@ -99,6 +99,18 @@ function fixedBigInt(value: bigint, scale: number, offset: number): string {
 export class Metadata {
   private developers = new Map<string, DeveloperInfo[]>();
   private fieldCache = new WeakMap<Definition, Map<string, FieldInfo>>();
+  private layouts = new WeakMap<
+    Definition,
+    Map<
+      boolean,
+      {
+        field: WireField;
+        key: string;
+        offset: number;
+        array?: boolean;
+      }[]
+    >
+  >();
   constructor(readonly index: FitIndex) {
     for (const id of index.messages.get(206) ?? []) {
       const record = index.records[id];
@@ -134,38 +146,63 @@ export class Metadata {
       descriptions?.[0]
     );
   }
-  raw(record: RecordRef): Record<string, RawValue> {
+  raw(
+    record: RecordRef,
+    selected?: ReadonlySet<string>,
+  ): Record<string, RawValue> {
+    let modes = this.layouts.get(record.definition);
+    if (!modes) this.layouts.set(record.definition, (modes = new Map()));
+    let layout = modes.get(record.compressed);
+    if (!layout) {
+      layout = [];
+      let offset = 1;
+      for (const field of record.definition.fields) {
+        if (
+          record.compressed &&
+          field.id === 253 &&
+          field.developer === undefined
+        )
+          continue;
+        layout.push({
+          field,
+          key: fieldKey(field),
+          offset,
+          array:
+            field.developer === undefined
+              ? (Profile.messages[record.definition.message]?.fields[field.id]
+                  ?.array ?? this.garminField(record, field)?.array)
+              : undefined,
+        });
+        offset += field.size;
+      }
+      modes.set(record.compressed, layout);
+    }
     const result: Record<string, RawValue> = {};
-    let offset = record.offset + 1;
-    for (const field of record.definition.fields) {
-      if (
-        record.compressed &&
-        field.id === 253 &&
+    for (const { field, key, offset, array: nativeArray } of layout) {
+      if (selected && !selected.has(key)) continue;
+      const developer =
         field.developer === undefined
-      )
-        continue;
+          ? undefined
+          : this.developer(record, field);
       const type =
         field.developer === undefined
           ? field.type
-          : (this.developer(record, field)?.type ?? field.type);
+          : (developer?.type ?? field.type);
       const value = readValue(
         this.index.view,
-        offset,
-        { ...field, type },
+        record.offset + offset,
+        type === field.type ? field : { ...field, type },
         record.definition.littleEndian,
       );
       const array =
-        field.developer === undefined
-          ? (Profile.messages[record.definition.message]?.fields[field.id]
-              ?.array ?? this.garminField(record, field)?.array)
-          : this.developer(record, field)?.array;
-      result[fieldKey(field)] =
+        field.developer === undefined ? nativeArray : developer?.array;
+      result[key] =
         array && !Array.isArray(value) && typeof value !== "string"
           ? [value]
           : value;
-      offset += field.size;
     }
-    if (record.timestamp !== undefined) result["253"] = record.timestamp;
+    if (record.timestamp !== undefined && (!selected || selected.has("253")))
+      result["253"] = record.timestamp;
     return result;
   }
   watchField(
@@ -288,6 +325,9 @@ export class Metadata {
       cache.set(cacheKey, result);
       return result;
     }
+    const fixedKey = `fixed:${key}:${wire.type}:${wire.size}`;
+    const fixed = cache.get(fixedKey);
+    if (fixed) return fixed;
     const profile = Profile.messages[record.definition.message];
     const official = profile?.fields[wire.id];
     const supplemental = this.garminField(record, wire);
@@ -354,6 +394,13 @@ export class Metadata {
       developer: false,
     };
     cache.set(cacheKey, result);
+    if (
+      !official?.subFields.length &&
+      !supplemental?.variants?.length &&
+      !watch.messages[record.definition.message]?.fields[wire.id]?.recordGuard
+        ?.messageIndexRequired
+    )
+      cache.set(fixedKey, result);
     return result;
   }
   cell(

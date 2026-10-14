@@ -44,8 +44,12 @@ export function isSetPath(name: string): boolean {
   return /\.set$/i.test(name) && !isIgnoredPath(name);
 }
 
+export function isOutBinPath(name: string): boolean {
+  return /(?:^|[\\/])out\.bin$/i.test(name) && !isIgnoredPath(name);
+}
+
 export function isDocumentPath(name: string): boolean {
-  return isFitPath(name) || isSetPath(name);
+  return isFitPath(name) || isSetPath(name) || isOutBinPath(name);
 }
 
 export function isZipPath(name: string): boolean {

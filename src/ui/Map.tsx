@@ -139,10 +139,7 @@ export default function ActivityMap({
         setFocused(undefined);
     },
   });
-  const [pointTypes, setPointTypes] = useState<MapPoint["kind"][]>([
-    "start",
-    "finish",
-  ]);
+  const [pointTypes, setPointTypes] = useState<MapPoint["kind"][]>([]);
   const satelliteUrl = import.meta.env.VITE_MAP_SATELLITE_URL as
     string | undefined;
   const streetUrl =

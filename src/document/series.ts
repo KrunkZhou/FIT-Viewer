@@ -103,11 +103,12 @@ export async function chartSensors(
       continue;
     }
     const counts = fields.map(() => new SampleStatistics());
+    const keys = new Set(fields.map((field) => field.field!));
     let index = 0;
     const ids = document.recordIds(message, source);
     for (const id of ids) {
       const record = document.index.records[id];
-      const cells = document.cells(id, !developer);
+      const cells = document.cells(id, !developer, keys);
       for (let field = 0; field < fields.length; field++) {
         const sensor = fields[field];
         if (sensor.axis === "time" && record.timestamp === undefined) continue;
@@ -231,6 +232,7 @@ export async function* chartPoints(
   }
   const [message, ...parts] = sensor.key.split(":");
   const field = sensor.field ?? parts.join(":");
+  const keys = new Set([field]);
   const ids = document.recordIds(
     sensor.message ?? Number(message),
     sensor.source,
@@ -240,7 +242,7 @@ export async function* chartPoints(
   let previous: number | undefined;
   for (let i = 0; i < ids.length; i++) {
     const record = document.index.records[ids[i]];
-    const cell = document.cells(ids[i], !developer)[field];
+    const cell = document.cells(ids[i], !developer, keys)[field];
     const value = cell?.[developer ? "raw" : "value"] ?? null;
     const values = Array.isArray(value) ? value : [value];
     const t = sensor.axis === "sample" ? sample : record.timestamp;
@@ -470,11 +472,31 @@ export async function* mapPositions(
   let missingGps = false;
   const fields = new Map<
     number,
-    { latitude: number; longitude: number; name?: number; timestamp?: number }
+    {
+      latitude: number;
+      longitude: number;
+      name?: number;
+      timestamp?: number;
+      keys: Set<string>;
+    }
   >();
   for (const definition of document.index.definitions) {
     const info = positionFields(definition.message);
-    if (info) fields.set(definition.message, info);
+    if (info)
+      fields.set(definition.message, {
+        ...info,
+        keys: new Set(
+          [
+            info.latitude,
+            info.longitude,
+            info.timestamp,
+            info.name,
+            ...(definition.message === 20 ? [78, 2, 5] : []),
+          ]
+            .filter((id) => id !== undefined)
+            .map(String),
+        ),
+      });
   }
   for (let id = 0; id < document.index.records.length; id++) {
     if (id % 512 === 0) {
@@ -484,7 +506,7 @@ export async function* mapPositions(
     const record = document.index.records[id];
     const info = fields.get(record.definition.message);
     if (!info) continue;
-    const cells = document.cells(id);
+    const cells = document.cells(id, true, info.keys);
     const timestamp =
       info.timestamp === undefined
         ? undefined

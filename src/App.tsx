@@ -17,6 +17,7 @@ import {
   LoaderCircle,
   Map,
   Moon,
+  Package,
   SlidersHorizontal,
   Sun,
   Upload,
@@ -37,6 +38,7 @@ import type { DocumentSummary, ExportQuery, TimeRange } from "./model";
 import { ControlTooltip } from "./ui/ControlTooltip";
 import { Overview } from "./ui/Overview";
 import { CiqSettings } from "./ui/CiqSettings";
+import { AppInventory } from "./ui/AppInventory";
 import { Messages } from "./ui/Messages";
 import { Diagnostics } from "./ui/Diagnostics";
 import {
@@ -51,12 +53,21 @@ import {
 const Charts = lazy(() => import("./ui/Charts"));
 const ActivityMap = lazy(() => import("./ui/Map"));
 type Tab =
-  "overview" | "messages" | "settings" | "map" | "chart" | "diagnostics";
+  | "overview"
+  | "messages"
+  | "settings"
+  | "inventory"
+  | "map"
+  | "chart"
+  | "diagnostics";
 
 export function initialDocumentTab(summary: DocumentSummary): Tab {
-  return summary.ciqSettings?.length && !summary.subfiles.length
-    ? "settings"
-    : "overview";
+  if (summary.subfiles.length) return "overview";
+  const hasSettings = Boolean(summary.ciqSettings?.length);
+  const hasInventory = Boolean(summary.appInventories?.length);
+  if (hasSettings && !hasInventory) return "settings";
+  if (hasInventory && !hasSettings) return "inventory";
+  return "overview";
 }
 
 export function documentTabs(summary?: DocumentSummary) {
@@ -73,6 +84,9 @@ export function documentTabs(summary?: DocumentSummary) {
             icon: SlidersHorizontal,
           },
         ]
+      : []),
+    ...(summary?.appInventories?.length
+      ? [{ id: "inventory" as const, title: "App Inventory", icon: Package }]
       : []),
     ...(summary?.hasMap
       ? [{ id: "map" as const, title: "Map", icon: Map }]
@@ -340,6 +354,11 @@ export default function App() {
           <CiqSettings files={summary.ciqSettings} />
         </div>
       ) : null}
+      {summary.appInventories?.length && visited.includes("inventory") ? (
+        <div className="section-view" hidden={tab !== "inventory"}>
+          <AppInventory files={summary.appInventories} />
+        </div>
+      ) : null}
       {summary.hasMap && visited.includes("map") && (
         <div className="section-view" hidden={tab !== "map"}>
           <ActivityMap
@@ -399,8 +418,8 @@ export default function App() {
         )}
         <span>
           {busy
-            ? "Opening FIT or SET files..."
-            : "Drop or open FIT or SET files here"}
+            ? "Opening FIT, SET or OUT.BIN files..."
+            : "Drop or open FIT files here"}
         </span>
       </button>
     </div>
@@ -418,7 +437,7 @@ export default function App() {
               if (!signal.aborted)
                 setProgress({
                   value: 0,
-                  phase: `Finding FIT or SET files: ${count}`,
+                  phase: `Finding FIT, SET or OUT.BIN files: ${count}`,
                 });
             }),
           );
@@ -428,9 +447,9 @@ export default function App() {
         ref={fileInput}
         type="file"
         multiple
-        accept=".fit,.set,.zip"
+        accept=".fit,.set,.bin,.zip"
         className="file-input"
-        aria-label="Open FIT or SET file"
+        aria-label="Open FIT, SET or OUT.BIN file"
         onChange={(event) => {
           const files = Array.from(event.target.files ?? []);
           event.target.value = "";
@@ -448,7 +467,7 @@ export default function App() {
           multiple
           {...{ webkitdirectory: "" }}
           className="file-input"
-          aria-label="Open FIT or SET folder"
+          aria-label="Open FIT, SET or OUT.BIN folder"
           onChange={(event) => {
             const files = Array.from(event.target.files ?? []);
             event.target.value = "";
@@ -530,7 +549,7 @@ export default function App() {
               </IconButton>
             )}
             {summary && (
-              <ControlTooltip content="Open FIT or SET files or ZIP archives">
+              <ControlTooltip content="Open FIT, SET or OUT.BIN files or ZIP archives">
                 <button
                   className="open-file"
                   onClick={() => fileInput.current?.click()}
@@ -542,8 +561,8 @@ export default function App() {
             )}
             {desktop && summary && (
               <IconButton
-                title="Open FIT or SET folder"
-                tooltip="Open a folder containing FIT or SET files"
+                title="Open FIT, SET or OUT.BIN folder"
+                tooltip="Open a folder containing FIT, SET or OUT.BIN files"
                 onClick={() => folderInput.current?.click()}
               >
                 <FolderOpen size={18} />
@@ -622,6 +641,11 @@ export default function App() {
                     {id === "settings" && (
                       <span className="viewer-tab-count">
                         {summary?.ciqSettings?.length}
+                      </span>
+                    )}
+                    {id === "inventory" && (
+                      <span className="viewer-tab-count">
+                        {summary?.appInventories?.length}
                       </span>
                     )}
                   </button>

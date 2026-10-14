@@ -1,5 +1,5 @@
 import type { DocumentSummary } from "../model";
-import type { CiqValue } from "../protocol/ciq-settings";
+import type { CiqDictionary, CiqValue } from "../protocol/ciq-settings";
 
 export function CiqSettings({
   files,
@@ -36,7 +36,7 @@ export function CiqSettings({
                 </tr>
               </thead>
               <tbody>
-                {file.settings.entries.map((entry, index) => (
+                {sortedEntries(file.settings.entries).map((entry, index) => (
                   <tr key={index}>
                     <th scope="row">
                       <CiqKey value={entry.key} />
@@ -61,6 +61,17 @@ export function CiqSettings({
       ))}
     </section>
   );
+}
+
+function sortedEntries(entries: CiqDictionary["entries"]) {
+  return [...entries].sort((a, b) => {
+    if (a.key.type !== "string") return b.key.type === "string" ? 1 : 0;
+    if (b.key.type !== "string") return -1;
+    return a.key.value.localeCompare(b.key.value, undefined, {
+      sensitivity: "base",
+      numeric: true,
+    });
+  });
 }
 
 function CiqKey({ value }: { value: CiqValue }) {
@@ -96,7 +107,7 @@ function CiqValueDisplay({ value }: { value: CiqValue }) {
       return <code className="viewer-ciq-value">{"{}"}</code>;
     return (
       <dl className="viewer-ciq-dictionary">
-        {value.entries.map((entry, index) => (
+        {sortedEntries(value.entries).map((entry, index) => (
           <div key={index}>
             <dt>
               <CiqKey value={entry.key} />

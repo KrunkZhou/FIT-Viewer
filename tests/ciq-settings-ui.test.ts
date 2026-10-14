@@ -121,9 +121,16 @@ test("failed SET sources do not expose a settings or FIT messages section", () =
 });
 
 test("CIQ settings render safe typed values and preserve exact longs and nested structures", () => {
-  const markup = renderToStaticMarkup(
-    createElement(CiqSettings, { files: settingsSummary().ciqSettings! }),
+  const files = settingsSummary().ciqSettings!;
+  files[0].settings = { ...settings, entries: [...settings.entries].reverse() };
+  const markup = renderToStaticMarkup(createElement(CiqSettings, { files }));
+  assert.deepEqual(
+    [...markup.matchAll(/class="viewer-ciq-key">(.*?)<\/span>/g)].map(
+      (match) => match[1],
+    ),
+    ["Enabled", "Exact long", "Label &lt;img&gt;", "Nested"],
   );
+  assert.deepEqual(files[0].settings.entries, [...settings.entries].reverse());
   assert.ok(markup.includes('aria-label="Settings in app.SET"'));
   assert.ok(markup.includes("Property</th>"));
   assert.ok(markup.includes("Type</th>"));

@@ -5,6 +5,7 @@ import {
   ImportSizeError,
   isDesktopFileUrl,
   isDocumentPath,
+  isOutBinPath,
   MAX_INPUT_FILES,
   type DesktopFile,
   type DocumentInput,
@@ -42,7 +43,7 @@ export async function loadFile(
     for (const source of loaded.sources) {
       if (sources.length >= MAX_INPUT_FILES)
         throw new Error(
-          `Select no more than ${MAX_INPUT_FILES} FIT or SET files.`,
+          `Select no more than ${MAX_INPUT_FILES} FIT, SET or OUT.BIN files.`,
         );
       total += source.bytes.length;
       sources.push({
@@ -65,6 +66,8 @@ async function loadSingleFile(
   limit: number,
   job: Job,
 ): Promise<LoadedFile> {
+  if (/\.bin$/i.test(file.name) && !isOutBinPath(file.name))
+    throw new Error("Only OUT.BIN files are supported for BIN imports.");
   if (file.size > limit)
     throw new ImportSizeError(
       `The selected file exceeds the ${Math.round(limit / 1048576)} MiB limit.`,
@@ -92,9 +95,11 @@ async function loadSingleFile(
     (f) => !f.dir && isDocumentPath(f.name),
   );
   if (!entries.length)
-    throw new Error("The ZIP archive contains no FIT or SET files.");
+    throw new Error("The ZIP archive contains no FIT, SET or OUT.BIN files.");
   if (entries.length > MAX_INPUT_FILES)
-    throw new Error(`Select no more than ${MAX_INPUT_FILES} FIT or SET files.`);
+    throw new Error(
+      `Select no more than ${MAX_INPUT_FILES} FIT, SET or OUT.BIN files.`,
+    );
   const sources: SourceInput[] = [];
   let total = 0;
   for (const [index, entry] of entries.entries()) {

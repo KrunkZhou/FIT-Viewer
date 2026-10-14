@@ -74,6 +74,11 @@ export function groupMotionAxes(
   }
   return [...plots.entries()].map(([identity, siblings]) => {
     if (siblings.length === 1) return siblings[0];
+    siblings.sort(
+      (a, b) =>
+        Number(a.sensor.field ?? a.sensor.key.split(":")[1]) -
+        Number(b.sensor.field ?? b.sensor.key.split(":")[1]),
+    );
     const sensor = siblings[0].sensor;
     const members = siblings.flatMap((group) => group.members);
     return {

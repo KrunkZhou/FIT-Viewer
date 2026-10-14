@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { CheckSquare2, Download, Search, Square, ZoomOut } from "lucide-react";
 import {
   CartesianGrid,
@@ -22,6 +30,9 @@ import type {
 } from "../model";
 import { DateRangeFilter } from "./DateRangeFilter";
 import type { DocumentClient } from "../document/client";
+import { ChartGroupLoader } from "./chart-loader";
+import { ChartPlotCache } from "./chart-plots";
+import { validationChartRender } from "../document/validation";
 import {
   IconButton,
   LoadingIndicator,
@@ -74,7 +85,7 @@ function sensorColor(sensor: Sensor): string {
     hash = (Math.imul(hash, 31) + character.charCodeAt(0)) >>> 0;
   return COLORS[hash % COLORS.length];
 }
-function Plot({
+const Plot = memo(function Plot({
   sensor,
   points,
   traces,
@@ -106,6 +117,7 @@ function Plot({
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   const [drag, setDrag] = useState<[number, number]>();
+  useEffect(() => validationChartRender(sensor.key));
   const timeline = useMemo(
     () => timeScale?.timeline ?? chartTimeline(points, sensor.axis),
     [points, sensor.axis, timeScale],
@@ -348,7 +360,7 @@ function Plot({
       </div>
     </section>
   );
-}
+});
 export default function Charts({
   client,
   developer,
@@ -366,7 +378,11 @@ export default function Charts({
   onDatesChange: (dates: TimeRange) => void;
   availableDates?: string[];
 }) {
-  const [data, setData] = useState<ChartData>();
+  const [inventory, setInventory] = useState<{
+    developer: boolean;
+    sensors: Sensor[];
+  }>();
+  const [inventoryLoading, setInventoryLoading] = useState(true);
   const [selected, setSelected] = useState<string[]>(
     readPreference(
       "chartSensors",
@@ -405,54 +421,55 @@ export default function Charts({
   const [width, setWidth] = useState<number>();
   const queryWidth =
     width === undefined ? undefined : Math.ceil(width / 128) * 128;
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [inventoryError, setInventoryError] = useState("");
   const content = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
-  const groups = useMemo(
-    () => groupSensors(data?.sensors ?? []),
-    [data?.sensors],
-  );
-  const members = chartMemberKeys(groups, selected);
-  const memberSelection = JSON.stringify(members.length ? members : selected);
-  const plots = useMemo(
+  const loader = useMemo(
     () =>
-      groupMotionAxes(
-        groups.filter((group) => selected.includes(group.sensor.key)),
-        combineXYZ,
-      )
-        .map((group) => {
-          const traces = group.members.map((member) => ({
-            sensor: member,
-            points: data?.series[member.key] ?? [],
-            color: sensorColor({ ...member, key: group.sensor.key }),
-          }));
-          const lines = chartLines(traces);
-          return {
-            sensor: group.sensor,
-            traces,
-            lines,
-            points:
-              lines.length > 1
-                ? lines
-                    .flatMap((trace) => trace.points)
-                    .sort((a, b) => a.time - b.time)
-                : lines[0].points,
-          };
-        })
-        .filter((plot) => plot.points.some((point) => point.value !== null)),
-    [groups, selected, combineXYZ, data?.series],
+      new ChartGroupLoader((query, signal) =>
+        client.request<ChartData>({ kind: "chart", query }, signal),
+      ),
+    [client],
   );
+  const loaded = useSyncExternalStore(
+    loader.subscribe,
+    loader.getSnapshot,
+    loader.getSnapshot,
+  );
+  const loading = inventoryLoading || loaded.loading;
+  const error = inventoryError || loaded.error;
+  const plotCache = useMemo(() => new ChartPlotCache(), []);
+  const groups = useMemo(
+    () =>
+      groupSensors(inventory?.developer === developer ? inventory.sensors : []),
+    [inventory, developer],
+  );
+  const plotGroups = useMemo(() => {
+    const byKey = new Map(groups.map((group) => [group.sensor.key, group]));
+    return groupMotionAxes(
+      selected.flatMap((key) => {
+        const group = byKey.get(key);
+        return group ? [group] : [];
+      }),
+      combineXYZ,
+    );
+  }, [groups, selected, combineXYZ]);
+  const plots = useMemo(
+    () => plotCache.prepare(plotGroups, loaded.series, sensorColor),
+    [plotCache, plotGroups, loaded.series],
+  );
+  const domain = syncTime ? chartTimeDomain(plots, range) : undefined;
+  const domainStart = domain?.[0];
+  const domainEnd = domain?.[1];
   const timeScale = useMemo(() => {
-    if (!syncTime) return undefined;
-    const domain = chartTimeDomain(plots, range);
-    if (!domain) return undefined;
+    if (domainStart === undefined || domainEnd === undefined) return undefined;
+    const domain: ChartTimeDomain = [domainStart, domainEnd];
     return {
       domain,
       ticks: chartTimeTicks(domain, width ?? 640),
       timeline: chartTimeline([], "time", domain),
     };
-  }, [syncTime, plots, range, width]);
+  }, [domainStart, domainEnd, width]);
   useEffect(() => {
     hoverStore.clear();
   }, [hoverStore, timeScale, active, client]);
@@ -468,84 +485,100 @@ export default function Charts({
     setRange({});
   }, [dates]);
   useEffect(() => {
-    if (!active || queryWidth === undefined) return;
+    if (!active || inventory?.developer === developer) return;
     const controller = new AbortController();
-    setLoading(true);
-    setError("");
+    setInventoryLoading(true);
+    setInventoryError("");
     client
       .request<ChartData>(
         {
           kind: "chart",
-          query: {
-            sensors: JSON.parse(memberSelection) as string[],
-            width: queryWidth,
-            detail,
-            developer,
-            ...range,
-            filter,
-            dates,
-          },
+          query: { sensors: [], width: 1, developer },
         },
         controller.signal,
       )
       .then((next) => {
         if (controller.signal.aborted) return;
-        setData(next);
-        setError("");
+        setInventoryLoading(false);
+        setInventory({ developer, sensors: next.sensors });
+        setInventoryError("");
         const nextGroups = groupSensors(next.sensors);
-        const keep = nextGroups
-          .filter(
-            (group) =>
-              selected.includes(group.sensor.key) ||
-              group.members.some((sensor) => selected.includes(sensor.key)),
-          )
-          .map((group) => group.sensor.key);
-        if (!initialized.current) {
-          initialized.current = true;
-          const defaults = nextGroups
-            .map((group) => group.sensor)
-            .filter((s) =>
-              ["20:3", "20:6", "20:2"].includes(
-                `${s.message ?? s.key.split(":")[0]}:${s.field ?? s.key.split(":")[1]}`,
-              ),
+        const initialize = !initialized.current;
+        initialized.current = true;
+        setSelected((selected) => {
+          const keep = nextGroups
+            .filter(
+              (group) =>
+                selected.includes(group.sensor.key) ||
+                group.members.some((sensor) => selected.includes(sensor.key)),
             )
-            .map((s) => s.key);
-          const initial = keep.length
-            ? keep
-            : defaults.length
-              ? defaults
-              : nextGroups.slice(0, 2).map((group) => group.sensor.key);
-          if (
-            initial.length !== selected.length ||
-            initial.some((key, index) => key !== selected[index])
+            .map((group) => group.sensor.key);
+          if (initialize) {
+            const defaults = nextGroups
+              .map((group) => group.sensor)
+              .filter((s) =>
+                ["20:3", "20:6", "20:2"].includes(
+                  `${s.message ?? s.key.split(":")[0]}:${s.field ?? s.key.split(":")[1]}`,
+                ),
+              )
+              .map((s) => s.key);
+            const initial = keep.length
+              ? keep
+              : defaults.length
+                ? defaults
+                : nextGroups.slice(0, 2).map((group) => group.sensor.key);
+            if (
+              initial.length !== selected.length ||
+              initial.some((key, index) => key !== selected[index])
+            )
+              return initial;
+          } else if (
+            keep.length !== selected.length ||
+            keep.some((key, index) => key !== selected[index])
           )
-            setSelected(initial);
-        } else if (
-          keep.length !== selected.length ||
-          keep.some((key, index) => key !== selected[index])
-        )
-          setSelected(keep);
+            return keep;
+          return selected;
+        });
       })
       .catch((error) => {
         if (!controller.signal.aborted && error.name !== "AbortError")
-          setError(error.message);
+          setInventoryError(error.message);
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        if (!controller.signal.aborted) setInventoryLoading(false);
       });
     return () => controller.abort();
+  }, [client, developer, active, inventory?.developer]);
+  const queries = useMemo(() => {
+    if (queryWidth === undefined || inventory?.developer !== developer)
+      return [];
+    return plotGroups.map((group) => ({
+      sensors: group.members.map((sensor) => sensor.key),
+      width: queryWidth,
+      detail,
+      developer,
+      ...range,
+      filter,
+      dates,
+    }));
   }, [
-    client,
-    selected,
-    memberSelection,
+    inventory,
+    plotGroups,
     queryWidth,
     detail,
     developer,
     range,
     filter,
-    active,
     dates,
   ]);
+  useEffect(() => {
+    loader.select(active ? queries : []);
+  }, [loader, queries, active]);
+  useEffect(() => () => loader.dispose(), [loader]);
+  const zoom = useCallback(
+    (start: number, end: number) => setRange({ start, end }),
+    [],
+  );
   const change = (values: string[]) => {
     initialized.current = true;
     setSelected(values);
@@ -710,7 +743,7 @@ export default function Charts({
                   lines={lines}
                   color={sensorColor(sensor)}
                   references={references}
-                  onZoom={(start, end) => setRange({ start, end })}
+                  onZoom={zoom}
                   key={sensor.key}
                 />
               );

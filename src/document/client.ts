@@ -15,6 +15,7 @@ import {
   validationStartDocument,
   validationValue,
   validationWorker,
+  validationChartRequest,
 } from "./validation";
 
 interface Pending {
@@ -146,6 +147,7 @@ export class DocumentClient {
     if (!this.worker || signal?.aborted)
       return Promise.reject(new DOMException("Cancelled", "AbortError"));
     const requestId = this.nextRequest++;
+    if (payload.kind === "chart") validationChartRequest();
     const started = performance.now();
     return new Promise<T>((resolve, reject) => {
       const abort = () => {

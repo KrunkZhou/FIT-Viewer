@@ -193,11 +193,16 @@ export async function readFit(
     )
       limit = bytes.length - 2;
     const locals = new Map<number, Definition>();
+    const layouts = new Map<
+      Definition,
+      { size: number; timestampOffset?: number }
+    >();
     let timestamp: number | undefined;
     let cursor = bodyStart;
     let lastRecordEnd = bodyStart;
+    let messagesRead = 0;
     while (cursor < limit) {
-      await checkpoint(cursor);
+      if (messagesRead++ % 128 === 0) await checkpoint(cursor);
       if (cursor > bodyStart && headerAt(cursor)) {
         if (await verifiedHeader(cursor)) {
           issue(
@@ -273,6 +278,19 @@ export async function readFit(
             subfile: id,
           };
           locals.set(local, definition);
+          let size = 0;
+          let timestampOffset: number | undefined;
+          for (const field of fields) {
+            if (
+              field.id === 253 &&
+              field.developer === undefined &&
+              field.type === 6 &&
+              field.size === 4
+            )
+              timestampOffset = size;
+            size += field.size;
+          }
+          layouts.set(definition, { size, timestampOffset });
           index.definitions.push(definition);
         } else {
           if (!compressed && header & 48)
@@ -282,28 +300,15 @@ export async function readFit(
             throw new Error(
               `Data references undefined local message ${local}.`,
             );
+          const layout = layouts.get(definition)!;
           if (
             compressed &&
-            (timestamp === undefined ||
-              !definition.fields.some(
-                (f) =>
-                  f.id === 253 &&
-                  f.developer === undefined &&
-                  f.type === 6 &&
-                  f.size === 4,
-              ))
+            (timestamp === undefined || layout.timestampOffset === undefined)
           )
             throw new Error(
               "Compressed timestamp has no valid timestamp base or definition.",
             );
-          const size = definition.fields.reduce(
-            (n, f) =>
-              n +
-              (compressed && f.id === 253 && f.developer === undefined
-                ? 0
-                : f.size),
-            0,
-          );
+          const size = layout.size - (compressed ? 4 : 0);
           if (cursor + size > limit)
             throw new Error("The last data message is incomplete.");
           const record: RecordRef = {
@@ -321,22 +326,14 @@ export async function readFit(
               delta +
               (delta < previous % 32 ? 32 : 0);
             record.timestamp = timestamp;
-          } else {
-            let fieldOffset = cursor;
-            for (const f of definition.fields) {
-              if (
-                f.id === 253 &&
-                f.developer === undefined &&
-                f.type === 6 &&
-                f.size === 4
-              ) {
-                const t = view.getUint32(fieldOffset, definition.littleEndian);
-                if (t !== 0xffffffff) {
-                  timestamp = t;
-                  record.timestamp = t;
-                }
-              }
-              fieldOffset += f.size;
+          } else if (layout.timestampOffset !== undefined) {
+            const t = view.getUint32(
+              cursor + layout.timestampOffset,
+              definition.littleEndian,
+            );
+            if (t !== 0xffffffff) {
+              timestamp = t;
+              record.timestamp = t;
             }
           }
           const recordId = index.records.length;

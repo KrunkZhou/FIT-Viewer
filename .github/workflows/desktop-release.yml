@@ -78,6 +78,7 @@ jobs:
     with:
       commit: ${{ needs.validate.outputs.commit }}
       version: ${{ needs.validate.outputs.version }}
+      validated: true
 
   build:
     needs: validate
@@ -96,6 +97,9 @@ jobs:
             arch: arm64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
+    env:
+      electron_config_cache: ${{ github.workspace }}/.cache/electron-downloads
+      ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -112,6 +116,15 @@ jobs:
         if: runner.os != 'macOS' || runner.arch != 'X64'
         with:
           cache: true
+      - name: Cache Electron and packaging tools
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        with:
+          path: |
+            ${{ env.electron_config_cache }}
+            ${{ env.ELECTRON_BUILDER_CACHE }}
+          key: desktop-tools-v1-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            desktop-tools-v1-${{ runner.os }}-${{ matrix.arch }}-
       - run: pnpm install --frozen-lockfile
       - name: Build desktop application
         run: pnpm run build:desktop
@@ -120,7 +133,7 @@ jobs:
       - name: Check desktop renderer and document worker
         run: pnpm run test:desktop
       - name: Package application
-        run: pnpm run package:desktop --${{ matrix.platform }} --${{ matrix.arch }}
+        run: pnpm run package:desktop --${{ matrix.platform }} --${{ matrix.arch }} --config.electronDownload.cache="$electron_config_cache"
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
       - name: Upload release files

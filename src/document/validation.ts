@@ -5,9 +5,30 @@ const enabled =
   new URLSearchParams(location.search).has("validate");
 let workers = 0;
 let maximum = 0;
+let chartRequests = 0;
+const chartRenders = new Map<string, number>();
 export function validationStartDocument(): void {
   maximum = 0;
+  chartRequests = 0;
+  chartRenders.clear();
+  if (enabled)
+    document.documentElement.setAttribute(
+      "data-validation-chart-renders",
+      "{}",
+    );
+  validationValue("chart-requests", 0);
   validationValue("long-task-max", 0);
+}
+export function validationChartRequest(): void {
+  if (enabled) validationValue("chart-requests", ++chartRequests);
+}
+export function validationChartRender(key: string): void {
+  if (!enabled) return;
+  chartRenders.set(key, (chartRenders.get(key) ?? 0) + 1);
+  document.documentElement.setAttribute(
+    "data-validation-chart-renders",
+    JSON.stringify(Object.fromEntries(chartRenders)),
+  );
 }
 export function validationValue(key: string, value: number): void {
   if (enabled)

@@ -14,17 +14,7 @@ import { SampleStatistics } from "./sample-statistics";
 import { hasTimeRange, inTimeRange } from "./time-range";
 import { chartPointBudget } from "./chart-sampling";
 
-export function isMotionSensor(sensor: Sensor): boolean {
-  const [keyMessage, keyField] = sensor.key.split(":");
-  const message = sensor.message ?? Number(keyMessage);
-  const field = Number(sensor.field ?? keyField);
-  return (
-    (message === 164 || message === 165) &&
-    Number.isInteger(field) &&
-    field >= 2 &&
-    field <= (message === 164 ? 7 : 10)
-  );
-}
+export { isMotionSensor } from "./chart-query";
 type Location = { wire: WireField; offset: number };
 function sampleCount(wire?: WireField): number {
   if (!wire) return 0;

@@ -42,7 +42,7 @@ export async function collectDrop(
       );
     if (files.length >= MAX_INPUT_FILES)
       throw new Error(
-        `Select no more than ${MAX_INPUT_FILES} FIT or SET files.`,
+        `Select no more than ${MAX_INPUT_FILES} FIT, SET or OUT.BIN files.`,
       );
     files.push(
       name === file.name
@@ -96,7 +96,7 @@ export async function collectDrop(
   }
   signal.throwIfAborted();
   if (!files.length)
-    throw new Error("The selection contains no FIT or SET files.");
+    throw new Error("The selection contains no FIT, SET or OUT.BIN files.");
   files.sort((a, b) => a.name.localeCompare(b.name));
   return {
     name:

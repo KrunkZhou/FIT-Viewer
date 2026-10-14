@@ -3,7 +3,7 @@ import { FitDocument } from "./document";
 import { createJob } from "./jobs";
 import { loadFile } from "./files";
 import { ImportSizeError } from "./input";
-import { mapData } from "./series";
+import { MapCache } from "./map-cache";
 import { ChartCache } from "./chart-cache";
 import { exportDocument } from "../export/export";
 import { addSummaryDiagnostics } from "../repair/repair";
@@ -18,6 +18,7 @@ let mapPlayback:
 let latestMapRequest = 0;
 const jobs = new Map<number, AbortController>();
 const charts = new ChartCache();
+const maps = new MapCache();
 scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
   const request = event.data;
   const send = (payload: WorkerResponsePayload) =>
@@ -37,6 +38,7 @@ scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     sourceView = undefined;
     mapPlayback = undefined;
     charts.clear();
+    maps.clear();
     jobs.clear();
     scope.close();
     return;
@@ -47,6 +49,7 @@ scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     sourceView = undefined;
     mapPlayback = undefined;
     charts.clear();
+    maps.clear();
     activeDocument = request.documentId;
   } else if (request.documentId !== activeDocument || !document) {
     send({ kind: "error", message: "This document is no longer active." });
@@ -108,8 +111,11 @@ scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       case "map": {
         latestMapRequest = request.requestId;
         mapPlayback = undefined;
-        const index = new MapPlaybackIndex();
-        const map = await mapData(current!, job, false, request.dates, index);
+        const { data: map, index } = await maps.query(
+          current!,
+          job,
+          request.dates,
+        );
         await job.yield();
         if (
           latestMapRequest !== request.requestId ||

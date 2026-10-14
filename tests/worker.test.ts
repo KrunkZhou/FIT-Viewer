@@ -132,6 +132,31 @@ test("map timeline queries use source samples and reject stale map indexes after
     assert.equal(next.kind, "result");
     if (next.kind === "result")
       assert.equal((next.result as MapPlaybackPosition).time, 1100000020);
+    const cached = await request(
+      { kind: "map", dates: { start: 1100000020, end: 1100000040 } },
+      61,
+    );
+    assert.equal(cached.kind, "result");
+    if (cached.kind === "result")
+      assert.equal((cached.result as MapData).playback?.id, 61);
+    assert.equal(
+      (
+        await request(
+          { kind: "map-position", mapId: 4, time: 1100000037, routes: [0] },
+          62,
+        )
+      ).kind,
+      "error",
+    );
+    assert.equal(
+      (
+        await request(
+          { kind: "map-position", mapId: 61, time: 1100000037, routes: [0] },
+          63,
+        )
+      ).kind,
+      "result",
+    );
     await request(
       {
         kind: "open",

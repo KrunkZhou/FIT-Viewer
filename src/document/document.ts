@@ -1,5 +1,6 @@
 import { Profile } from "@garmin/fitsdk";
 import type {
+  AppInventoryFile,
   Cell,
   CiqSettingsFile,
   Definition,
@@ -23,7 +24,7 @@ import { positionCoordinates, positionFields } from "./positions";
 import { readWorkspace } from "./workspace";
 import { FIT_EPOCH, localDateKey } from "../protocol/time";
 import type { SourceInput } from "./files";
-import { isSetPath } from "./input";
+import { isOutBinPath, isSetPath } from "./input";
 import hrUtility from "@garmin/fitsdk/src/utils-hr-mesg.js";
 
 export class FitDocument {
@@ -56,6 +57,7 @@ export class FitDocument {
       },
     ],
     readonly ciqSettings: CiqSettingsFile[] = [],
+    readonly appInventories: AppInventoryFile[] = [],
   ) {
     this.metadata = new Metadata(index);
     this.messageInfo = Array.from(index.messages, ([id, records]) => ({
@@ -72,7 +74,7 @@ export class FitDocument {
     filename: string,
     job = idleJob(),
   ): Promise<FitDocument> {
-    if (isSetPath(filename))
+    if (isSetPath(filename) || isOutBinPath(filename))
       return FitDocument.openSources([{ filename, bytes }], filename, job);
     const document = new FitDocument(await readFit(bytes, job), filename);
     await document.buildDerived(job);
@@ -83,11 +85,22 @@ export class FitDocument {
     filename: string,
     job = idleJob(),
   ): Promise<FitDocument> {
-    if (sources.length === 1 && !isSetPath(sources[0].filename)) {
-      const document = new FitDocument(
-        await readFit(sources[0].bytes, job),
-        filename,
-      );
+    if (
+      sources.length === 1 &&
+      !isSetPath(sources[0].filename) &&
+      !isOutBinPath(sources[0].filename)
+    ) {
+      const index = await readFit(sources[0].bytes, job);
+      const document = new FitDocument(index, filename, [
+        {
+          id: 0,
+          filename: sources[0].filename,
+          bytes: index.bytes.length,
+          start: 0,
+          end: index.bytes.length,
+          records: index.records.length,
+        },
+      ]);
       await document.buildDerived(job);
       return document;
     }
@@ -99,6 +112,7 @@ export class FitDocument {
       filename,
       workspace.sources,
       workspace.ciqSettings,
+      workspace.appInventories,
     );
     await document.buildDerived(job);
     return document;
@@ -145,6 +159,7 @@ export class FitDocument {
           ),
         ),
         ...(this.ciqSettings.length ? ["Connect IQ settings"] : []),
+        ...(this.appInventories.length ? ["Garmin app inventory"] : []),
       ],
       messages: this.messageInfo,
       subfiles: this.index.subfiles,
@@ -155,16 +170,24 @@ export class FitDocument {
       hasHrv: this.index.messages.has(78) || this.index.messages.has(132),
       repairable: this.index.diagnostics.some((d) => d.repair !== "none"),
       ...(this.ciqSettings.length ? { ciqSettings: this.ciqSettings } : {}),
+      ...(this.appInventories.length
+        ? { appInventories: this.appInventories }
+        : {}),
     };
   }
   raw(id: number): Record<string, RawValue> {
     return this.metadata.raw(this.index.records[id]);
   }
-  cells(id: number, derived = true): Record<string, Cell> {
+  cells(
+    id: number,
+    derived = true,
+    selected?: ReadonlySet<string>,
+  ): Record<string, Cell> {
     const record = this.index.records[id];
     const raw = this.raw(id);
     const result: Record<string, Cell> = {};
     for (const wire of record.definition.fields) {
+      if (selected && !selected.has(fieldKey(wire))) continue;
       const info = this.metadata.field(record, wire, raw);
       result[fieldKey(wire)] = this.metadata.cell(
         record,
@@ -178,6 +201,7 @@ export class FitDocument {
         ...expandComponents(record, raw),
         ...this.components.get(id),
       })) {
+        if (selected && !selected.has(key)) continue;
         if (result[key]?.value !== null && result[key] !== undefined) continue;
         const profile =
           Profile.messages[record.definition.message]?.fields[Number(key)];
@@ -210,6 +234,7 @@ export class FitDocument {
       }
       if (
         record.definition.message === 20 &&
+        (!selected || selected.has("3")) &&
         (result["3"]?.value === null || !result["3"]) &&
         this.mergedHr.has(id)
       )
@@ -218,8 +243,10 @@ export class FitDocument {
           value: this.mergedHr.get(id)!,
           numeric: true,
         };
-      for (const [key, value] of Object.entries(this.memo.get(id) ?? {}))
+      for (const [key, value] of Object.entries(this.memo.get(id) ?? {})) {
+        if (selected && !selected.has(key)) continue;
         result[key] = { raw: raw[key] ?? null, value, numeric: false };
+      }
     }
     return result;
   }
@@ -320,8 +347,9 @@ export class FitDocument {
       if (!filters.length) filtered = source;
       else {
         filtered = [];
+        const keys = new Set(filters.map(([key]) => key));
         for (let i = 0; i < source.length; i++) {
-          const cells = this.cells(source[i], !query.developer);
+          const cells = this.cells(source[i], !query.developer, keys);
           if (
             filters.every(([key, values]) =>
               values.includes(
@@ -369,9 +397,10 @@ export class FitDocument {
         (f) => Object.keys(f.values ?? {}).length && !f.bitmask,
       );
       const sets = new Map(enums.map((f) => [f.key, new Set<string>()]));
+      const keys = new Set(sets.keys());
       if (enums.length)
         for (let i = 0; i < source.length; i++) {
-          const cells = this.cells(source[i], !query.developer);
+          const cells = this.cells(source[i], !query.developer, keys);
           for (const f of enums)
             sets
               .get(f.key)!
@@ -450,9 +479,37 @@ export class FitDocument {
       { latitude: WireField; longitude: WireField }
     >();
     const positionTimes = new Map<number, number>();
+    const derivedFields = new Map<Definition, Set<string>>();
     for (const definition of this.index.definitions) {
+      // Loading needs timing, positions and accumulated components, not every sensor array.
+      const selected = new Set<string>();
+      derivedFields.set(definition, selected);
+      if (definition.message === 20)
+        [0, 1, 6, 73].forEach((id) => selected.add(String(id)));
+      if (definition.message === 164 || definition.message === 165) {
+        selected.add("0");
+        selected.add("1");
+      }
+      const profile = Profile.messages[definition.message];
+      for (const wire of definition.fields) {
+        if (wire.developer !== undefined) continue;
+        const field = profile?.fields[wire.id];
+        if (
+          field?.isAccumulated ||
+          (field?.hasComponents &&
+            field.components.some(
+              (key) => profile.fields[Number(key)]?.isAccumulated,
+            ))
+        )
+          selected.add(String(wire.id));
+      }
       const fields = positionFields(definition.message);
       if (!fields) continue;
+      [fields.latitude, fields.longitude, fields.timestamp, 254].forEach(
+        (id) => {
+          if (id !== undefined) selected.add(String(id));
+        },
+      );
       if (fields.timestamp !== undefined)
         positionTimes.set(definition.message, fields.timestamp);
       const latitude = definition.fields.find(
@@ -481,7 +538,10 @@ export class FitDocument {
     >();
     for (let id = 0; id < this.index.records.length; id++) {
       const record = this.index.records[id];
-      const raw = this.raw(id);
+      const raw = this.metadata.raw(
+        record,
+        derivedFields.get(record.definition),
+      );
       addDate(record.timestamp);
       if (
         record.timestamp !== undefined &&

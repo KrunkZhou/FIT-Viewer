@@ -44,7 +44,10 @@ test("Pages and desktop workflows use pinned actions, locked installs and scoped
   });
   assert.equal(pages.jobs.deploy.needs, "build");
   assert.ok(pages.jobs.build.if.includes("repository.default_branch"));
-  assert.equal(pages.jobs.build.steps[0].with["fetch-depth"], 0);
+  assert.equal(
+    pages.jobs.build.steps[0].with["fetch-depth"],
+    "${{ inputs.version && 1 || 0 }}",
+  );
   const release = workflow("desktop-release");
   assert.deepEqual(release.jobs.release.permissions, { contents: "write" });
   assert.deepEqual(release.jobs.release.needs, ["validate", "build"]);
@@ -86,6 +89,7 @@ test("Pages shares the desktop commit and resolved version instead of racing rel
   assert.deepEqual(caller.with, {
     commit: "${{ needs.validate.outputs.commit }}",
     version: "${{ needs.validate.outputs.version }}",
+    validated: true,
   });
   assert.equal(
     pages.jobs.build.steps[0].with.ref,
@@ -104,6 +108,16 @@ test("Pages shares the desktop commit and resolved version instead of racing rel
 test("build workflows retain portable install, typecheck and test gates", () => {
   const pages = workflow("pages");
   const release = workflow("desktop-release");
+  assert.equal(pages.on.workflow_call.inputs.validated.default, false);
+  assert.equal(pages.on.workflow_call.inputs.validated.type, "boolean");
+  for (const step of pages.jobs.build.steps.filter((s: { run?: string }) =>
+    ["pnpm run typecheck", "pnpm test"].includes(s.run ?? ""),
+  ))
+    assert.equal(step.if, "${{ !inputs.validated }}");
+  for (const step of release.jobs.validate.steps.filter((s: { run?: string }) =>
+    ["pnpm run typecheck", "pnpm test"].includes(s.run ?? ""),
+  ))
+    assert.equal(step.if, undefined);
   for (const [job, expected] of [
     [
       pages.jobs.build,
@@ -126,6 +140,31 @@ test("build workflows retain portable install, typecheck and test gates", () => 
   }
 });
 
+test("desktop tool caches are restored before installation and isolated by platform and dependency versions", () => {
+  const build = workflow("desktop-release").jobs.build;
+  const cacheIndex = build.steps.findIndex(
+    (step: { name?: string }) =>
+      step.name === "Cache Electron and packaging tools",
+  );
+  const installIndex = build.steps.findIndex(
+    (step: { run?: string }) => step.run === "pnpm install --frozen-lockfile",
+  );
+  assert.ok(cacheIndex >= 0 && cacheIndex < installIndex);
+  const cache = build.steps[cacheIndex].with;
+  assert.match(cache.key, /runner\.os/);
+  assert.match(cache.key, /matrix\.arch/);
+  assert.match(cache.key, /hashFiles\('pnpm-lock.yaml'\)/);
+  assert.equal(
+    build.env.electron_config_cache,
+    "${{ github.workspace }}/.cache/electron-downloads",
+  );
+  assert.equal(
+    build.env.ELECTRON_BUILDER_CACHE,
+    "${{ github.workspace }}/.cache/electron-builder",
+  );
+  assert.ok(!cache.path.includes("node_modules"));
+});
+
 test("Windows releases build installer and portable executables with distinct names", () => {
   const config = JSON.parse(readFileSync("electron-builder.json", "utf8"));
   assert.deepEqual(config.win.target, ["nsis", "portable"]);
@@ -143,7 +182,7 @@ test("Windows releases build installer and portable executables with distinct na
   );
   assert.equal(
     packageStep.run,
-    "pnpm run package:desktop --${{ matrix.platform }} --${{ matrix.arch }}",
+    'pnpm run package:desktop --${{ matrix.platform }} --${{ matrix.arch }} --config.electronDownload.cache="$electron_config_cache"',
   );
   const upload = release.jobs.build.steps.find(
     (step: { name?: string }) => step.name === "Upload release files",

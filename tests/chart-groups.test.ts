@@ -126,6 +126,12 @@ test("axis selection and per-file identities survive combining and separating ch
   assert.deepEqual(groupMotionAxes(chosen, false), chosen);
   assert.deepEqual(groupMotionAxes([groups[0]], true), [groups[0]]);
   assert.deepEqual(chartMemberKeys(groups, selected), before);
+  assert.deepEqual(
+    groupMotionAxes([...chosen].reverse(), true)[0].members.map(
+      (member) => member.key,
+    ),
+    before,
+  );
 });
 
 test("chart lines connect matching readings across file and time gaps in chronological order", () => {
