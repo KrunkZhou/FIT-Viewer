@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { NsisUpdater } from "electron-updater";
+import { ElectronAppAdapter } from "electron-updater/out/ElectronAppAdapter";
 import {
   createUpdateBackend,
   stableUpdate,
@@ -63,6 +65,19 @@ test("only installed packaged Windows apps offer native installation", () => {
   assert.equal(updateMode("darwin", true, false), "download");
   for (const platform of ["win32", "darwin", "linux"])
     assert.equal(updateMode(platform, false, false), "unavailable");
+});
+
+test("Windows installation is explicitly requested, silent, and relaunches the app", (t) => {
+  t.mock.getter(ElectronAppAdapter.prototype, "version", () => "1.2.3");
+  const install = t.mock.method(NsisUpdater.prototype, "quitAndInstall", () => {});
+  const native = createUpdateBackend("win32", true, false, "1.2.3");
+  assert.equal(install.mock.callCount(), 0);
+  native.install();
+  assert.equal(install.mock.callCount(), 1);
+  assert.deepEqual(install.mock.calls[0].arguments, [true, true]);
+  const updater = install.mock.calls[0].this;
+  assert.ok(updater instanceof NsisUpdater);
+  assert.equal(updater.autoInstallOnAppQuit, false);
 });
 
 test("portable release checks use the fixed public endpoint, stable versions and cancellation", async (t) => {

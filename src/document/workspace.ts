@@ -1,11 +1,17 @@
-import type { Definition, Job, SourceInfo } from "../model";
+import type { CiqSettingsFile, Definition, Job, SourceInfo } from "../model";
 import { type FitIndex, rawRecord, readFit } from "../protocol/reader";
+import { readCiqSettings } from "../protocol/ciq-settings";
 import type { SourceInput } from "./files";
+import { isSetPath } from "./input";
 
 export async function readWorkspace(
   sources: SourceInput[],
   job: Job,
-): Promise<{ index: FitIndex; sources: SourceInfo[] }> {
+): Promise<{
+  index: FitIndex;
+  sources: SourceInfo[];
+  ciqSettings: CiqSettingsFile[];
+}> {
   const bytes = new Uint8Array(
     sources.reduce((size, source) => size + source.bytes.length, 0),
   );
@@ -28,6 +34,7 @@ export async function readWorkspace(
     raw: (record) => rawRecord(index, record),
   };
   const info: SourceInfo[] = [];
+  const ciqSettings: CiqSettingsFile[] = [];
   offset = 0;
   for (const [id, source] of sources.entries()) {
     const entry: SourceInfo = {
@@ -40,6 +47,17 @@ export async function readWorkspace(
     };
     info.push(entry);
     try {
+      if (isSetPath(source.filename)) {
+        const settings = await readCiqSettings(
+          bytes.subarray(entry.start, entry.end),
+          job,
+        );
+        ciqSettings.push({ source: id, filename: source.filename, settings });
+        offset = entry.end;
+        job.progress(id + 1, sources.length, "Reading CIQ settings");
+        await job.yield();
+        continue;
+      }
       const parsed = await readFit(bytes.subarray(entry.start, entry.end), {
         ...job,
         progress: (completed, total) =>
@@ -122,5 +140,5 @@ export async function readWorkspace(
     job.progress(id + 1, sources.length, "Reading ZIP entries");
     await job.yield();
   }
-  return { index, sources: info };
+  return { index, sources: info, ciqSettings };
 }

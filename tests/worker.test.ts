@@ -3,13 +3,17 @@ import test from "node:test";
 import { Worker } from "node:worker_threads";
 import type {
   DocumentSummary,
+  RequestPayload,
   TablePage,
   ExportResult,
   WorkerRequest,
   WorkerResponse,
+  MapData,
+  MapPlaybackPosition,
 } from "../src/model";
 import JSZip from "jszip";
 import { activity } from "./fixtures";
+import { syntheticSettings } from "./ciq-fixtures";
 function worker() {
   return new Worker(new URL("./worker-adapter.mjs", import.meta.url), {
     execArgv: [],
@@ -38,6 +42,119 @@ function wait(
     worker.once("error", reject);
   });
 }
+test("map timeline queries use source samples and reject stale map indexes after filtering or replacement", async () => {
+  const w = worker();
+  const request = (
+    payload: RequestPayload,
+    requestId: number,
+    documentId = 1,
+  ) => {
+    const pending = wait(
+      w,
+      (message) =>
+        message.requestId === requestId && message.kind !== "progress",
+    );
+    w.postMessage({
+      ...payload,
+      requestId,
+      documentId,
+    } satisfies WorkerRequest);
+    return pending;
+  };
+  try {
+    await request(
+      {
+        kind: "open",
+        file: new File([activity(100).slice()], "gps.fit"),
+        limit: 1e8,
+      },
+      1,
+    );
+    const response = await request({ kind: "map" }, 2);
+    assert.equal(response.kind, "result");
+    if (response.kind !== "result") throw new Error("Map failed");
+    const data = response.result as MapData;
+    assert.equal(data.tracks[0].length, 2);
+    assert.equal(data.playback?.routes[0].count, 100);
+    const position = await request(
+      {
+        kind: "map-position",
+        mapId: data.playback!.id,
+        time: 1100000037,
+        routes: [0],
+      },
+      3,
+    );
+    assert.equal(position.kind, "result");
+    if (position.kind === "result")
+      assert.equal((position.result as MapPlaybackPosition).time, 1100000037);
+    if (position.kind === "result") {
+      const record = (position.result as MapPlaybackPosition).record;
+      const tableResponse = await request(
+        {
+          kind: "table",
+          query: {
+            message: 20,
+            developer: false,
+            page: 0,
+            size: 20,
+            filters: {},
+            target: record,
+          },
+        },
+        42,
+      );
+      assert.equal(tableResponse.kind, "result");
+      if (tableResponse.kind === "result") {
+        const table = tableResponse.result as TablePage;
+        assert.equal(table.selected, record);
+        assert.equal(table.page, 1);
+        assert.equal(
+          table.rows.find((row) => row.index === record)?.cells["253"].raw,
+          1100000037,
+        );
+      }
+    }
+    const filtered = await request(
+      { kind: "map", dates: { start: 1100000020, end: 1100000040 } },
+      4,
+    );
+    assert.equal(filtered.kind, "result");
+    const stale = await request(
+      { kind: "map-position", mapId: 2, time: 1100000037, routes: [0] },
+      5,
+    );
+    assert.equal(stale.kind, "error");
+    const next = await request(
+      { kind: "map-position", mapId: 4, time: 1100000000, routes: [0] },
+      6,
+    );
+    assert.equal(next.kind, "result");
+    if (next.kind === "result")
+      assert.equal((next.result as MapPlaybackPosition).time, 1100000020);
+    await request(
+      {
+        kind: "open",
+        file: new File([activity(10).slice()], "replacement.fit"),
+        limit: 1e8,
+      },
+      7,
+      2,
+    );
+    assert.equal(
+      (
+        await request(
+          { kind: "map-position", mapId: 4, time: 1100000037, routes: [0] },
+          8,
+          2,
+        )
+      ).kind,
+      "error",
+    );
+  } finally {
+    await w.terminate();
+  }
+});
 test("document worker returns a complete GeoJSON download", async () => {
   const w = worker();
   try {
@@ -177,6 +294,64 @@ test("worker rejects stale documents and supports queries while exporting", asyn
       true,
     );
     await output;
+  } finally {
+    await w.terminate();
+  }
+});
+
+test("CIQ worker keeps settings isolated across source selection and replacement", async () => {
+  const w = worker();
+  let id = 0;
+  const request = async (payload: RequestPayload) => {
+    const requestId = ++id;
+    const pending = wait(
+      w,
+      (message) =>
+        message.requestId === requestId && message.kind !== "progress",
+    );
+    w.postMessage({ ...payload, requestId, documentId: 1 });
+    const response = await pending;
+    if (response.kind === "error") throw new Error(response.message);
+    return (response as Extract<WorkerResponse, { kind: "result" }>).result;
+  };
+  try {
+    const fit = new File([activity(12).slice()], "run.fit");
+    // Node clones File as Blob; ZIP entry names preserve the browser filenames.
+    const archive = await new JSZip()
+      .file("example.SET", syntheticSettings())
+      .file("run.fit", activity(12))
+      .generateAsync({ type: "uint8array" });
+    const summary = (await request({
+      kind: "open",
+      file: new File([archive.slice()], "Garmin.zip"),
+      filename: "Garmin.zip",
+      limit: 1e6,
+    })) as DocumentSummary;
+    assert.equal(summary.ciqSettings?.length, 1);
+    assert.equal(summary.ciqSettings?.[0].source, 0);
+    assert.equal(summary.hasMap, true);
+    const selectedSettings = (await request({
+      kind: "summary",
+      source: 0,
+    })) as DocumentSummary;
+    assert.equal(selectedSettings.filename, "example.SET");
+    assert.equal(selectedSettings.ciqSettings?.[0].settings.entries.length, 6);
+    assert.equal(selectedSettings.records, 0);
+    const selectedFit = (await request({
+      kind: "summary",
+      source: 1,
+    })) as DocumentSummary;
+    assert.equal(selectedFit.ciqSettings, undefined);
+    assert.equal(selectedFit.hasMap, true);
+    const combined = (await request({ kind: "summary" })) as DocumentSummary;
+    assert.equal(combined.ciqSettings?.length, 1);
+    const replaced = (await request({
+      kind: "open",
+      file: fit,
+      filename: "run.fit",
+      limit: 1e6,
+    })) as DocumentSummary;
+    assert.equal(replaced.ciqSettings, undefined);
   } finally {
     await w.terminate();
   }

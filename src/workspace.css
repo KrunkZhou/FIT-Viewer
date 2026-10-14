@@ -73,6 +73,7 @@ body { margin: 0; overflow: hidden; }
 .viewer-metrics > div:last-child { border: 0; }
 .viewer-metrics dt { color: var(--viewer-muted); font-size: 13px; }
 .viewer-metrics dd { margin-top: 8px; font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.overview-content .viewer-metrics-settings { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .viewer-status { display: flex; align-items: center; gap: 10px; padding: 13px 16px; width: 100%; text-align: left; font-size: 14px; border-radius: 4px; margin-bottom: 24px; }
 .viewer-status svg { flex: none; }
 .viewer-status span { flex: 1; }
@@ -150,9 +151,6 @@ body { margin: 0; overflow: hidden; }
 .viewer-chart-content { min-width: 0; }
 .viewer-chart-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--viewer-border); }
 .viewer-chart-toolbar > h2 { margin-right: auto; }
-.viewer-chart-filter { display: flex; align-items: center; gap: 8px; }
-.viewer-chart-references { display: flex; flex-basis: 100%; align-items: center; gap: 12px; }
-.viewer-chart-references input { max-width: 100%; }
 .viewer-sensor-plot { padding: 16px 0 12px; border-bottom: 1px solid var(--viewer-border); }
 .viewer-sensor-plot h3 { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 14px; font-weight: 600; margin-bottom: 8px; }
 .viewer-chart-canvas { height: 260px; width: 100%; min-width: 0; font-size: 12px; }
@@ -163,6 +161,29 @@ body { margin: 0; overflow: hidden; }
 .viewer-file-headers { border-top: 1px solid var(--viewer-border); padding-top: 18px; }
 .viewer-header-details { display: grid; grid-template-columns: 150px minmax(0, 1fr); font-size: 13px; gap: 10px 16px; margin-top: 12px; }
 .viewer-header-details dt { color: var(--viewer-muted); }
+.viewer-ciq-settings { padding-block: 4px 20px; }
+.viewer-ciq-settings > p { margin-top: 6px; }
+.viewer-ciq-file { margin-top: 22px; border-top: 1px solid var(--viewer-border); padding-top: 16px; }
+.viewer-ciq-file h3 { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
+.viewer-ciq-table-container { overflow-x: auto; margin-top: 10px; }
+.viewer-ciq-table-container > table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; text-align: left; }
+.viewer-ciq-table-container th, .viewer-ciq-table-container td { padding: 9px 12px; vertical-align: top; border-bottom: 1px solid var(--viewer-border-soft); overflow-wrap: anywhere; }
+.viewer-ciq-table-container thead th { color: var(--viewer-muted); font-weight: 500; background: var(--viewer-surface); }
+.viewer-ciq-table-container thead th:first-child { width: 26%; }
+.viewer-ciq-table-container thead th:nth-child(2) { width: 14%; }
+.viewer-ciq-table-container tbody th { font-weight: 500; }
+.viewer-ciq-type { color: var(--viewer-muted); font-size: 12px; font-weight: 400; }
+.viewer-ciq-key, .viewer-ciq-value { white-space: pre-wrap; overflow-wrap: anywhere; }
+.viewer-ciq-value { font-size: 12px; font-variant-numeric: tabular-nums; }
+.viewer-ciq-typed-value { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
+.viewer-ciq-typed-value > .viewer-ciq-type { flex: none; }
+.viewer-ciq-typed-value > :last-child { min-width: 0; }
+.viewer-ciq-array { list-style: decimal; margin: 0; padding-left: 24px; }
+.viewer-ciq-array > li + li { margin-top: 6px; }
+.viewer-ciq-dictionary { margin: 0; padding-left: 12px; border-left: 2px solid var(--viewer-border); }
+.viewer-ciq-dictionary > div + div { margin-top: 8px; }
+.viewer-ciq-dictionary dt { font-weight: 500; margin-bottom: 3px; }
+.viewer-ciq-dictionary dd { margin-left: 0; }
 @media (min-width: 760px) {
   .viewer-mode-toggle { font-size: 13px; line-height: 1.4; }
   .section-tabs > .viewer-tab-navigation .viewer-tab { min-height: 36px; padding: 6px 12px; font-size: 13px; }
@@ -204,6 +225,9 @@ body { margin: 0; overflow: hidden; }
   .viewer-chart-canvas { height: 230px; }
   .viewer-csv-dialog { padding: 16px; }
   .viewer-header-details { grid-template-columns: 130px minmax(0, 1fr); }
+  .viewer-ciq-table-container th, .viewer-ciq-table-container td { padding: 8px 6px; }
+  .viewer-ciq-table-container thead th:first-child { width: 24%; }
+  .viewer-ciq-table-container thead th:nth-child(2) { width: 18%; }
 }
 @media print {
   html, body, #root, .viewer-app, .viewer-main, .section-tabs,

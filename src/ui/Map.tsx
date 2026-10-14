@@ -1,10 +1,5 @@
 import { useEffect, useMemo, useState, type HTMLAttributes } from "react";
-import {
-  Download,
-  FileJson2,
-  PanelRightClose,
-  PanelRightOpen,
-} from "lucide-react";
+import { PanelRightClose, PanelRightOpen, Route, Scan } from "lucide-react";
 import {
   CircleMarker,
   MapContainer,
@@ -18,15 +13,31 @@ import {
 import type {
   MapData,
   MapPoint,
+  MapPlaybackPosition,
   ExportQuery,
   Position,
   TimeRange,
 } from "../model";
 import { DateRangeFilter } from "./DateRangeFilter";
 import type { DocumentClient } from "../document/client";
-import { IconButton, LoadingIndicator, Toggle } from "./controls";
+import {
+  IconButton,
+  LoadingIndicator,
+  Toggle,
+  readPreference,
+  savePreference,
+} from "./controls";
 import { formatTimestamp } from "../protocol/time";
 import { pointDetails, routeDetails } from "./map-details";
+import {
+  mapCursorTime,
+  mapProgressFromTime,
+  mapTimeRange,
+  mapTimelineSegments,
+  type MapTimeRange,
+} from "./map-playback";
+import { MapTrackPoints } from "./MapTrackPoints";
+import { MapDownloads, MapTimeline } from "./MapControls";
 import "leaflet/dist/leaflet.css";
 
 const COLORS = ["#176856", "#397ad1", "#c74662", "#9765b8", "#b57b0b"];
@@ -44,7 +55,7 @@ type Highlight =
   | { kind: "point"; index: number }
   | { kind: "type"; type: MapPoint["kind"] };
 
-function Bounds({ data }: { data: MapData }) {
+function Bounds({ data, recenter }: { data: MapData; recenter: number }) {
   const map = useMap();
   useEffect(() => {
     const positions: [number, number][] = [
@@ -53,13 +64,15 @@ function Bounds({ data }: { data: MapData }) {
     ].map((p) => [p.lat, p.lon]);
     if (positions.length)
       map.fitBounds(positions, { padding: [24, 24], maxZoom: 16 });
+  }, [map, data, recenter]);
+  useEffect(() => {
     const observer = new ResizeObserver(() => {
       const size = map.getContainer().getBoundingClientRect();
       if (size.width && size.height) map.invalidateSize();
     });
     observer.observe(map.getContainer());
     return () => observer.disconnect();
-  }, [map, data]);
+  }, [map]);
   return null;
 }
 
@@ -69,12 +82,14 @@ export default function ActivityMap({
   dates,
   onDatesChange,
   availableDates,
+  onGoToData,
 }: {
   client: DocumentClient;
   download: (query: ExportQuery) => void;
   dates: TimeRange;
   onDatesChange: (dates: TimeRange) => void;
   availableDates?: string[];
+  onGoToData: (record: number) => void;
 }) {
   const [data, setData] = useState<MapData>();
   const [error, setError] = useState("");
@@ -88,7 +103,23 @@ export default function ActivityMap({
     [],
   );
   const [legend, setLegend] = useState(false);
+  const [recenter, setRecenter] = useState(0);
   const [satellite, setSatellite] = useState(false);
+  const [connectPoints, setConnectPoints] = useState(
+    readPreference(
+      "mapConnectPoints",
+      true,
+      (value): value is boolean => typeof value === "boolean",
+    ),
+  );
+  const [time, setTime] = useState<number>();
+  const [currentPosition, setCurrentPosition] =
+    useState<MapPlaybackPosition | null>();
+  const [positionQuery, setPositionQuery] = useState<{
+    time: number;
+    range: MapTimeRange;
+  }>();
+  const [playbackError, setPlaybackError] = useState("");
   const [selected, setSelected] = useState<Position & { route: number }>();
   const selectedPosition = useMemo<[number, number] | undefined>(
     () => (selected ? [selected.lat, selected.lon] : undefined),
@@ -129,6 +160,10 @@ export default function ActivityMap({
     setError("");
     setData(undefined);
     setSelected(undefined);
+    setTime(undefined);
+    setCurrentPosition(undefined);
+    setPositionQuery(undefined);
+    setPlaybackError("");
     setHiddenRoutes([]);
     setHiddenPoints([]);
     setHovered(undefined);
@@ -151,6 +186,61 @@ export default function ActivityMap({
     route === undefined || !hiddenRoutes.includes(route);
   const routeName = (route: number) =>
     data?.routeNames?.[route] ?? `Route ${route + 1}`;
+  const timeRange = useMemo(
+    () => mapTimeRange(data?.playback?.routes ?? [], hiddenRoutes),
+    [data?.playback, hiddenRoutes],
+  );
+  const cursorTime = mapCursorTime(time, timeRange);
+  const cursorProgress = mapProgressFromTime(cursorTime, timeRange);
+  const timeline = useMemo(
+    () =>
+      mapTimelineSegments(
+        data?.playback?.routes ?? [],
+        hiddenRoutes,
+        COLORS,
+        timeRange,
+      ),
+    [data?.playback, hiddenRoutes, timeRange],
+  );
+  const currentRouteColor =
+    currentPosition && routeVisible(currentPosition.route)
+      ? COLORS[currentPosition.route % COLORS.length]
+      : "var(--viewer-muted)";
+  useEffect(() => {
+    if (!data?.playback || cursorTime === undefined || !timeRange) {
+      setCurrentPosition(undefined);
+      return;
+    }
+    const controller = new AbortController();
+    const mapId = data.playback.id;
+    const frame = requestAnimationFrame(() => {
+      setPlaybackError("");
+      client
+        .request<MapPlaybackPosition | null>(
+          {
+            kind: "map-position",
+            mapId,
+            time: cursorTime,
+            routes: timeRange.routes,
+          },
+          controller.signal,
+        )
+        .then((position) => {
+          if (!controller.signal.aborted) {
+            setCurrentPosition(position);
+            setPositionQuery({ time: cursorTime, range: timeRange });
+          }
+        })
+        .catch((error) => {
+          if (!controller.signal.aborted && error.name !== "AbortError")
+            setPlaybackError(error.message);
+        });
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      controller.abort();
+    };
+  }, [client, data?.playback, cursorTime, timeRange]);
   const trackPositions = useMemo(
     () =>
       data?.tracks.map((track) =>
@@ -206,6 +296,33 @@ export default function ActivityMap({
             />
           )}
           <div className="viewer-map-tools">
+            <IconButton
+              title="Recenter map"
+              tooltip="Recenter on visible routes and points"
+              disabled={
+                loading ||
+                !visible ||
+                (!visible.tracks.length && !visible.points.length)
+              }
+              onClick={() => setRecenter((value) => value + 1)}
+            >
+              <Scan size={18} />
+            </IconButton>
+            <IconButton
+              title="Route lines"
+              tooltip={
+                connectPoints
+                  ? "Hide route lines and show GPS points only"
+                  : "Connect GPS points with route lines"
+              }
+              aria-pressed={connectPoints}
+              onClick={() => {
+                setConnectPoints(!connectPoints);
+                savePreference("mapConnectPoints", !connectPoints);
+              }}
+            >
+              <Route size={18} />
+            </IconButton>
             <DateRangeFilter
               value={dates}
               onChange={onDatesChange}
@@ -221,32 +338,14 @@ export default function ActivityMap({
                 />
               </label>
             )}
-            <IconButton
-              title="Download GPX"
-              tooltip="Download GPS tracks as GPX for the selected dates"
+            <MapDownloads
+              download={download}
+              dates={dates}
+              withLaps={pointTypes.includes("lap")}
               disabled={
                 loading || !data || (!data.tracks.length && !data.points.length)
               }
-              onClick={() =>
-                download({
-                  format: "gpx",
-                  withLaps: pointTypes.includes("lap"),
-                  dates,
-                })
-              }
-            >
-              <Download size={17} />
-            </IconButton>
-            <IconButton
-              title="Download GeoJSON"
-              tooltip="Download GPS points as GeoJSON for the selected dates"
-              disabled={
-                loading || !data || (!data.tracks.length && !data.points.length)
-              }
-              onClick={() => download({ format: "geojson", dates })}
-            >
-              <FileJson2 size={17} />
-            </IconButton>
+            />
             <IconButton
               title={legend ? "Hide map legend" : "Show map legend"}
               tooltip={
@@ -280,9 +379,10 @@ export default function ActivityMap({
                 maxZoom={19}
                 eventHandlers={tileEvents}
               />
-              <Bounds data={visible} />
+              <Bounds data={visible} recenter={recenter} />
               {data.tracks.map(
                 (track, route) =>
+                  connectPoints &&
                   routeVisible(route) && (
                     <Polyline
                       key={route}
@@ -311,6 +411,42 @@ export default function ActivityMap({
                       }}
                     />
                   ),
+              )}
+              {!connectPoints && (
+                <MapTrackPoints
+                  tracks={data.tracks}
+                  hidden={hiddenRoutes}
+                  colors={COLORS}
+                  highlighted={
+                    highlighted?.kind === "route"
+                      ? highlighted.index
+                      : undefined
+                  }
+                  onSelect={setSelected}
+                />
+              )}
+              {currentPosition && routeVisible(currentPosition.route) && (
+                <CircleMarker
+                  className="map-time-position"
+                  center={[currentPosition.lat, currentPosition.lon]}
+                  radius={8}
+                  pathOptions={{
+                    color: "#fff",
+                    fillColor: "#f59e0b",
+                    fillOpacity: 1,
+                    weight: 3,
+                  }}
+                >
+                  <Tooltip direction="top">
+                    <strong>Current position</strong>
+                    <div>{routeName(currentPosition.route)}</div>
+                    <div>{formatTimestamp(currentPosition.time)}</div>
+                    <div>
+                      {currentPosition.lat.toFixed(7)},{" "}
+                      {currentPosition.lon.toFixed(7)}
+                    </div>
+                  </Tooltip>
+                </CircleMarker>
               )}
               {selected && (
                 <Popup
@@ -377,7 +513,8 @@ export default function ActivityMap({
                     </CircleMarker>
                   ),
               )}
-              {highlighted?.kind === "route" &&
+              {connectPoints &&
+                highlighted?.kind === "route" &&
                 routeVisible(highlighted.index) && (
                   <Polyline
                     className="map-highlight-route"
@@ -412,6 +549,31 @@ export default function ActivityMap({
               )}
               <ScaleControl />
             </MapContainer>
+          )}
+          {timeRange && cursorTime !== undefined && (
+            <MapTimeline
+              range={timeRange}
+              progress={cursorProgress ?? 0}
+              segments={timeline}
+              position={
+                currentPosition && routeVisible(currentPosition.route)
+                  ? currentPosition
+                  : undefined
+              }
+              routeName={
+                currentPosition && routeVisible(currentPosition.route)
+                  ? routeName(currentPosition.route)
+                  : undefined
+              }
+              color={currentRouteColor}
+              error={playbackError}
+              onTimeChange={setTime}
+              onGoToData={onGoToData}
+              canGoToData={
+                positionQuery?.time === cursorTime &&
+                positionQuery?.range === timeRange
+              }
+            />
           )}
           {!loading && data && !data.tracks.length && !data.points.length && (
             <p className="viewer-map-empty" role="status">

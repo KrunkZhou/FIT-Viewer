@@ -1,4 +1,121 @@
-// Electron executes this serialized function in the isolated renderer.
+// Electron executes these serialized functions in the isolated renderer.
+export async function checkCiqRenderer(
+  settingsBytes: number[],
+  fitBytes: number[],
+) {
+  const waitFor = async (predicate: () => boolean, stage: string) => {
+    const deadline = performance.now() + 10000;
+    while (!predicate()) {
+      if (performance.now() > deadline)
+        throw new Error(`CIQ smoke timed out: ${stage}`);
+      await new Promise<void>((resolve) => setTimeout(resolve, 25));
+    }
+  };
+  const tab = (id: string) => document.getElementById(`tab-${id}`);
+  const open = (files: File[]) => {
+    const data = new DataTransfer();
+    files.forEach((file) => data.items.add(file));
+    const input =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    if (!input.accept.split(",").includes(".set"))
+      throw new Error("SET picker filter missing");
+    input.files = data.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+  const settings = () => new File([new Uint8Array(settingsBytes)], "example.SET");
+  const fit = () => new File([new Uint8Array(fitBytes)], "ciq-run.fit");
+  open([settings()]);
+  await waitFor(
+    () =>
+      document.querySelector(".viewer-file h2")?.textContent === "example.SET" &&
+      !!tab("settings"),
+    "standalone settings",
+  );
+  if (tab("settings")?.getAttribute("aria-selected") !== "true")
+    throw new Error("Standalone SET did not select settings");
+  await waitFor(
+    () => document.querySelectorAll(".viewer-ciq-file tbody tr").length === 6,
+    "six settings rows",
+  );
+  if (tab("messages") || tab("chart") || tab("map"))
+    throw new Error("SET exposed FIT-only tabs");
+  if (
+    !document
+      .querySelector(".viewer-ciq-settings")
+      ?.textContent?.includes("test-device-01")
+  )
+    throw new Error("CIQ property values missing");
+  open([settings(), fit()]);
+  await waitFor(
+    () =>
+      document.querySelector(".viewer-file h2")?.textContent === "2 files" &&
+      !!tab("messages") &&
+      !!tab("settings"),
+    "mixed settings and FIT",
+  );
+  if (tab("overview")?.getAttribute("aria-selected") !== "true")
+    throw new Error("Mixed import did not select overview");
+  const select = document.querySelector<HTMLSelectElement>(
+    'select[aria-label="Source file"]',
+  )!;
+  const sourceValue = (filename: string) => {
+    const option = Array.from(select.options).find(
+      (option) => option.textContent === filename,
+    );
+    if (!option) throw new Error(`Source option missing: ${filename}`);
+    return option.value;
+  };
+  select.value = sourceValue("example.SET");
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+  await waitFor(
+    () =>
+      document.querySelector(".viewer-file h2")?.textContent === "example.SET" &&
+      !!tab("settings"),
+    "settings source selection",
+  );
+  select.value = sourceValue("ciq-run.fit");
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+  await waitFor(
+    () =>
+      document.querySelector(".viewer-file h2")?.textContent ===
+        "ciq-run.fit" &&
+      !!tab("messages") &&
+      !tab("settings"),
+    "FIT source selection",
+  );
+  select.value = "";
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+  await waitFor(
+    () =>
+      document.querySelector(".viewer-file h2")?.textContent === "2 files" &&
+      !!tab("settings"),
+    "combined source restoration",
+  );
+  open([fit()]);
+  await waitFor(
+    () =>
+      document.querySelector(".viewer-file h2")?.textContent ===
+        "ciq-run.fit" &&
+      !!tab("messages") &&
+      !tab("settings"),
+    "FIT replacement clears settings",
+  );
+  open([settings()]);
+  await waitFor(
+    () =>
+      document.querySelector(".viewer-file h2")?.textContent === "example.SET" &&
+      document.querySelectorAll(".viewer-ciq-file tbody tr").length === 6,
+    "settings screenshot",
+  );
+  return {
+    standalone: true,
+    rows: 6,
+    mixed: true,
+    sourceSelection: true,
+    replacement: true,
+  };
+}
+
 export async function checkRenderer(bytes?: number[]) {
   const waitFor = async (predicate: () => boolean, stage: string) => {
     const deadline = performance.now() + 15000;
@@ -59,6 +176,100 @@ export async function checkRenderer(bytes?: number[]) {
     removedStatus: removed.status,
     nodeAccess,
   };
+}
+
+export async function checkMapTimeline() {
+  document.getElementById("tab-map")!.click();
+  const waitFor = async (predicate: () => boolean) => {
+    const deadline = performance.now() + 5000;
+    while (!predicate()) {
+      if (performance.now() > deadline)
+        throw new Error("Map timeline smoke timed out");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  };
+  const button = (label: string) =>
+    document.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`);
+  await waitFor(() => !!button("Hide GPS timeline"));
+  const container = document.querySelector<HTMLElement>(".leaflet-container")!;
+  const dock = document.querySelector<HTMLElement>(
+    ".viewer-map-playback-dock",
+  )!;
+  const pane = container.querySelector<HTMLElement>(".leaflet-map-pane")!;
+  const ancestors: HTMLElement[] = [];
+  for (
+    let parent = container.parentElement;
+    parent;
+    parent = parent.parentElement
+  )
+    ancestors.push(parent);
+  const initial = {
+    rect: container.getBoundingClientRect(),
+    dockHeight: dock.getBoundingClientRect().height,
+    transform: pane.style.transform,
+    scrolls: ancestors.map((element) => [
+      element.scrollLeft,
+      element.scrollTop,
+    ]),
+  };
+  const verify = () => {
+    const rect = container.getBoundingClientRect();
+    if (
+      !container.isConnected ||
+      rect.x !== initial.rect.x ||
+      rect.y !== initial.rect.y ||
+      rect.width !== initial.rect.width ||
+      rect.height !== initial.rect.height ||
+      pane.style.transform !== initial.transform ||
+      ancestors.some(
+        (element, index) =>
+          element.scrollLeft !== initial.scrolls[index][0] ||
+          element.scrollTop !== initial.scrolls[index][1],
+      )
+    )
+      throw new Error("Timeline toggle scrolled or moved the map");
+  };
+  const toggle = async (label: string) => {
+    button(label)!.click();
+    const deadline = performance.now() + 250;
+    do {
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
+      verify();
+    } while (performance.now() < deadline);
+  };
+  await toggle("Hide GPS timeline");
+  const show = button("Show GPS timeline")!;
+  const rect = show.getBoundingClientRect();
+  const anchor = show.parentElement!.getBoundingClientRect();
+  if (
+    Math.abs(rect.x - anchor.x) > 1 ||
+    Math.abs(rect.y - anchor.y) > 1 ||
+    Math.abs(rect.width - anchor.width) > 1 ||
+    Math.abs(rect.height - anchor.height) > 1 ||
+    Math.abs(dock.getBoundingClientRect().height - initial.dockHeight) > 1
+  )
+    throw new Error(
+      "Timeline restore tooltip anchor does not match its button",
+    );
+  if (document.activeElement !== show)
+    throw new Error("Timeline restore button did not receive focus");
+  const tooltip = () =>
+    Array.from(document.querySelectorAll<HTMLElement>('[role="tooltip"]')).find(
+      (element) => element.textContent === "Show the GPS timeline",
+    );
+  await waitFor(() => !!tooltip());
+  const tip = tooltip()!.getBoundingClientRect();
+  if (tip.left > rect.right || tip.right < rect.left || tip.bottom > rect.top)
+    throw new Error("Timeline restore tooltip is detached from its button");
+  await toggle("Show GPS timeline");
+  if (document.activeElement !== button("Hide GPS timeline"))
+    throw new Error("Timeline hide button did not receive focus");
+  if (tooltip()) throw new Error("Timeline restore tooltip remained open");
+  await toggle("Hide GPS timeline");
+  await toggle("Show GPS timeline");
+  return { stableMap: true, tooltipAnchored: true, focusRestored: true };
 }
 
 export async function checkDesktopSelection(name: string, sources: number) {

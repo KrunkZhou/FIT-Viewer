@@ -12,10 +12,6 @@ export async function exportGeoJson(
   const parts: BlobPart[] = ['{"type":"FeatureCollection","features":['];
   let batch: string[] = [];
   let first = true;
-  let route = 0;
-  let segment = false;
-  let subfile = -1;
-  let previous: number | undefined;
   const flush = () => {
     if (!batch.length) return;
     parts.push(encoder.encode(`${first ? "" : ","}${batch.join(",")}`));
@@ -32,24 +28,6 @@ export async function exportGeoJson(
     dates,
   )) {
     const point = entry.point;
-    if (entry.message === 20) {
-      if (
-        segment &&
-        (!point ||
-          subfile !== entry.subfile ||
-          (previous !== undefined &&
-            point.time !== undefined &&
-            point.time < previous))
-      )
-        segment = false;
-      if (!point) continue;
-      if (!segment) {
-        route++;
-        segment = true;
-      }
-      subfile = entry.subfile;
-      previous = point.time;
-    }
     if (!point) continue;
     const kind =
       entry.message === 20
@@ -70,7 +48,7 @@ export async function exportGeoJson(
           record_index: point.record,
           message_id: entry.message,
           subfile: entry.subfile + 1,
-          route_id: entry.message === 20 ? route : null,
+          route_id: entry.message === 20 ? entry.route! + 1 : null,
           timestamp:
             point.time === undefined
               ? null

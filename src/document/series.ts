@@ -2,6 +2,7 @@ import type {
   ChartData,
   ChartPoint,
   ChartQuery,
+  ChartDetail,
   Job,
   MapData,
   Position,
@@ -19,6 +20,8 @@ import {
 } from "./motion";
 import { SampleStatistics } from "./sample-statistics";
 import { positionCoordinates, positionFields } from "./positions";
+import type { MapPlaybackIndex } from "./map-playback";
+import { chartPointBudget } from "./chart-sampling";
 
 export function sensors(document: FitDocument, developer: boolean): Sensor[] {
   const output: Sensor[] = [];
@@ -144,8 +147,9 @@ export async function chartSensors(
 function* sampledPoints(
   points: ChartPoint[],
   width: number,
+  detail?: ChartDetail,
 ): Generator<ChartPoint | undefined> {
-  const capacity = Math.max(8, Math.min(8192, Math.round(width) * 2));
+  const capacity = chartPointBudget(width, detail);
   if (points.length <= capacity) {
     yield* points;
     return;
@@ -191,8 +195,12 @@ function* sampledPoints(
   }
 }
 
-export function downsample(points: ChartPoint[], width: number): ChartPoint[] {
-  return Array.from(sampledPoints(points, width)).filter(
+export function downsample(
+  points: ChartPoint[],
+  width: number,
+  detail?: ChartDetail,
+): ChartPoint[] {
+  return Array.from(sampledPoints(points, width, detail)).filter(
     (point): point is ChartPoint => point !== undefined,
   );
 }
@@ -201,9 +209,10 @@ async function scheduledDownsample(
   points: ChartPoint[],
   width: number,
   job: Job,
+  detail?: ChartDetail,
 ): Promise<ChartPoint[]> {
   const output: ChartPoint[] = [];
-  for (const point of sampledPoints(points, width)) {
+  for (const point of sampledPoints(points, width, detail)) {
     if (point === undefined) await job.yield();
     else output.push(point);
   }
@@ -282,7 +291,11 @@ export async function chart(
     start = data.start;
     end = data.end;
   }
-  for (const sensor of selected.filter((s) => full || !isMotionSensor(s))) {
+  const ordinary = selected.filter((s) => full || !isMotionSensor(s));
+  const widths = full
+    ? new Map<string, number>()
+    : await displayWidths(document, ordinary, query, job);
+  for (const sensor of ordinary) {
     const points: ChartPoint[] = [];
     let excluded = false;
     if (sensor.axis === "sample" && hasTimeRange(query.dates)) {
@@ -319,7 +332,12 @@ export async function chart(
     }
     series[sensor.key] = full
       ? points
-      : await scheduledDownsample(points, query.width, job);
+      : await scheduledDownsample(
+          points,
+          widths.get(sensor.key) ?? query.width,
+          job,
+          query.detail,
+        );
   }
   return {
     sensors: available,
@@ -327,6 +345,67 @@ export async function chart(
     start: Number.isFinite(start) ? start : 0,
     end: Number.isFinite(end) ? end : 0,
   };
+}
+
+async function displayWidths(
+  document: FitDocument,
+  sensors: Sensor[],
+  query: ChartQuery,
+  job: Job,
+): Promise<Map<string, number>> {
+  const groups = new Map<string, { sensor: Sensor; weight: number }[]>();
+  const visibility = new Map<string, number>();
+  for (const sensor of sensors) {
+    const message = sensor.message ?? Number(sensor.key.split(":")[0]);
+    let weight = sensor.pointCount ?? 1;
+    if (
+      sensor.axis === "time" &&
+      (query.start !== undefined ||
+        query.end !== undefined ||
+        hasTimeRange(query.dates))
+    ) {
+      const key = `${message}:${sensor.source ?? "all"}`;
+      let fraction = visibility.get(key);
+      if (fraction === undefined) {
+        const ids = document.recordIds(message, sensor.source);
+        let visible = 0;
+        for (let i = 0; i < ids.length; i++) {
+          const time = document.index.records[ids[i]].timestamp;
+          if (
+            time !== undefined &&
+            (query.start === undefined || time >= query.start) &&
+            (query.end === undefined || time <= query.end) &&
+            inTimeRange(time, query.dates)
+          )
+            visible++;
+          if (i % 1024 === 0) await job.yield();
+        }
+        fraction = visible / Math.max(1, ids.length);
+        visibility.set(key, fraction);
+      }
+      weight *= fraction;
+    }
+    const identity = JSON.stringify([
+      message,
+      sensor.field,
+      sensor.units,
+      sensor.axis,
+      sensor.label ?? sensor.name,
+    ]);
+    const group = groups.get(identity) ?? [];
+    group.push({ sensor, weight });
+    groups.set(identity, group);
+  }
+  const widths = new Map<string, number>();
+  for (const group of groups.values()) {
+    const total = group.reduce((sum, entry) => sum + entry.weight, 0);
+    for (const { sensor, weight } of group)
+      widths.set(
+        sensor.key,
+        total ? (query.width * weight) / total : query.width,
+      );
+  }
+  return widths;
 }
 
 async function simplify(
@@ -382,8 +461,13 @@ export async function* mapPositions(
 ): AsyncGenerator<{
   message: number;
   subfile: number;
+  route?: number;
   point?: Position & { name?: string };
 }> {
+  const maxGpsGapSeconds = 30;
+  let route = -1;
+  let previous: { subfile: number; time?: number } | undefined;
+  let missingGps = false;
   const fields = new Map<
     number,
     { latitude: number; longitude: number; name?: number; timestamp?: number }
@@ -401,11 +485,29 @@ export async function* mapPositions(
     const info = fields.get(record.definition.message);
     if (!info) continue;
     const cells = document.cells(id);
+    const timestamp =
+      info.timestamp === undefined
+        ? undefined
+        : cells[String(info.timestamp)]?.raw;
+    const time =
+      record.timestamp ??
+      (typeof timestamp === "number" && Number.isFinite(timestamp)
+        ? timestamp
+        : undefined);
+    if (!inTimeRange(time, dates)) {
+      if (record.definition.message === 20) {
+        previous = undefined;
+        missingGps = false;
+      }
+      yield { message: record.definition.message, subfile: record.subfile };
+      continue;
+    }
     const coordinates = positionCoordinates(
       cells[String(info.latitude)]?.value,
       cells[String(info.longitude)]?.value,
     );
     if (!coordinates) {
+      if (record.definition.message === 20) missingGps = true;
       yield { message: record.definition.message, subfile: record.subfile };
       continue;
     }
@@ -417,22 +519,27 @@ export async function* mapPositions(
       record.definition.message === 20 ? cells["5"]?.value : undefined;
     const name =
       info.name === undefined ? undefined : cells[String(info.name)]?.value;
-    const timestamp =
-      info.timestamp === undefined
-        ? undefined
-        : cells[String(info.timestamp)]?.raw;
-    const time =
-      record.timestamp ??
-      (typeof timestamp === "number" && Number.isFinite(timestamp)
-        ? timestamp
-        : undefined);
-    if (!inTimeRange(time, dates)) {
-      yield { message: record.definition.message, subfile: record.subfile };
-      continue;
+    if (record.definition.message === 20) {
+      // Only bridge GPS dropouts whose valid endpoints prove a short gap.
+      if (
+        !previous ||
+        previous.subfile !== record.subfile ||
+        (previous.time !== undefined &&
+          time !== undefined &&
+          time < previous.time) ||
+        (missingGps &&
+          (previous.time === undefined ||
+            time === undefined ||
+            time - previous.time > maxGpsGapSeconds))
+      )
+        route++;
+      previous = { subfile: record.subfile, time };
+      missingGps = false;
     }
     yield {
       message: record.definition.message,
       subfile: record.subfile,
+      ...(record.definition.message === 20 ? { route } : {}),
       point: {
         ...coordinates,
         time,
@@ -450,12 +557,14 @@ export async function mapData(
   job = idleJob(),
   full = false,
   dates?: TimeRange,
+  playback?: MapPlaybackIndex,
 ): Promise<MapData> {
   const data: MapData = { tracks: [], points: [] };
   let track: Position[] = [];
-  let subfile = -1;
+  let route = -1;
   const finish = async () => {
     if (track.length) {
+      await playback?.addTrack(track, data.tracks.length, job);
       data.tracks.push(full ? track : await simplify(track, 0.00002, job));
       if (document.sources.length > 1) {
         data.routeNames ??= [];
@@ -467,26 +576,18 @@ export async function mapData(
     track = [];
   };
   let kilometre = 0;
-  for await (const { message, subfile: file, point } of mapPositions(
+  for await (const { message, route: nextRoute, point } of mapPositions(
     document,
     job,
     dates,
   )) {
-    if (!point) {
-      if (message === 20) await finish();
-      continue;
-    }
+    if (!point) continue;
     if (message === 20) {
-      if (
-        subfile !== file ||
-        (track.at(-1)?.time !== undefined &&
-          point.time !== undefined &&
-          point.time < track.at(-1)!.time!)
-      ) {
+      if (route !== nextRoute) {
         await finish();
         kilometre = 0;
       }
-      subfile = file;
+      route = nextRoute!;
       track.push(point);
       if (
         !full &&

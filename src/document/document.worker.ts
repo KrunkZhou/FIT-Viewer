@@ -3,15 +3,21 @@ import { FitDocument } from "./document";
 import { createJob } from "./jobs";
 import { loadFile } from "./files";
 import { ImportSizeError } from "./input";
-import { chart, mapData } from "./series";
+import { mapData } from "./series";
+import { ChartCache } from "./chart-cache";
 import { exportDocument } from "../export/export";
 import { addSummaryDiagnostics } from "../repair/repair";
+import { MapPlaybackIndex } from "./map-playback";
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
 let document: FitDocument | undefined;
 let sourceView: { source: number; document: FitDocument } | undefined;
 let activeDocument = 0;
+let mapPlayback:
+  { document: FitDocument; id: number; index: MapPlaybackIndex } | undefined;
+let latestMapRequest = 0;
 const jobs = new Map<number, AbortController>();
+const charts = new ChartCache();
 scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
   const request = event.data;
   const send = (payload: WorkerResponsePayload) =>
@@ -29,6 +35,8 @@ scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     for (const job of jobs.values()) job.abort();
     document = undefined;
     sourceView = undefined;
+    mapPlayback = undefined;
+    charts.clear();
     jobs.clear();
     scope.close();
     return;
@@ -37,6 +45,8 @@ scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     for (const job of jobs.values()) job.abort();
     document = undefined;
     sourceView = undefined;
+    mapPlayback = undefined;
+    charts.clear();
     activeDocument = request.documentId;
   } else if (request.documentId !== activeDocument || !document) {
     send({ kind: "error", message: "This document is no longer active." });
@@ -93,10 +103,39 @@ scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         result = await current!.singletons(request.developer, job);
         break;
       case "chart":
-        result = await chart(current!, request.query, job);
+        result = await charts.query(current!, request.query, job);
         break;
-      case "map":
-        result = await mapData(current!, job, false, request.dates);
+      case "map": {
+        latestMapRequest = request.requestId;
+        mapPlayback = undefined;
+        const index = new MapPlaybackIndex();
+        const map = await mapData(current!, job, false, request.dates, index);
+        await job.yield();
+        if (
+          latestMapRequest !== request.requestId ||
+          request.documentId !== activeDocument
+        )
+          throw new DOMException("Cancelled", "AbortError");
+        mapPlayback = { document: current!, id: request.requestId, index };
+        result = {
+          ...map,
+          playback: { id: request.requestId, routes: index.routes },
+        };
+        break;
+      }
+      case "map-position":
+        if (
+          !mapPlayback ||
+          mapPlayback.document !== current ||
+          mapPlayback.id !== request.mapId
+        )
+          throw new Error("The map timeline is no longer active.");
+        result = await mapPlayback.index.position(
+          current!,
+          request.time,
+          request.routes,
+          job,
+        );
         break;
       case "diagnostics": {
         const size = Math.min(100, Math.max(1, Math.trunc(request.size) || 50));

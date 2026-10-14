@@ -1,6 +1,7 @@
 import { Profile } from "@garmin/fitsdk";
 import type {
   Cell,
+  CiqSettingsFile,
   Definition,
   DocumentSummary,
   FieldInfo,
@@ -22,6 +23,7 @@ import { positionCoordinates, positionFields } from "./positions";
 import { readWorkspace } from "./workspace";
 import { FIT_EPOCH, localDateKey } from "../protocol/time";
 import type { SourceInput } from "./files";
+import { isSetPath } from "./input";
 import hrUtility from "@garmin/fitsdk/src/utils-hr-mesg.js";
 
 export class FitDocument {
@@ -53,6 +55,7 @@ export class FitDocument {
         records: index.records.length,
       },
     ],
+    readonly ciqSettings: CiqSettingsFile[] = [],
   ) {
     this.metadata = new Metadata(index);
     this.messageInfo = Array.from(index.messages, ([id, records]) => ({
@@ -69,6 +72,8 @@ export class FitDocument {
     filename: string,
     job = idleJob(),
   ): Promise<FitDocument> {
+    if (isSetPath(filename))
+      return FitDocument.openSources([{ filename, bytes }], filename, job);
     const document = new FitDocument(await readFit(bytes, job), filename);
     await document.buildDerived(job);
     return document;
@@ -78,13 +83,22 @@ export class FitDocument {
     filename: string,
     job = idleJob(),
   ): Promise<FitDocument> {
-    if (sources.length === 1)
-      return FitDocument.open(sources[0].bytes, filename, job);
+    if (sources.length === 1 && !isSetPath(sources[0].filename)) {
+      const document = new FitDocument(
+        await readFit(sources[0].bytes, job),
+        filename,
+      );
+      await document.buildDerived(job);
+      return document;
+    }
     const workspace = await readWorkspace(sources, job);
+    if (sources.length === 1 && workspace.sources[0].error)
+      throw new Error(workspace.sources[0].error);
     const document = new FitDocument(
       workspace.index,
       filename,
       workspace.sources,
+      workspace.ciqSettings,
     );
     await document.buildDerived(job);
     return document;
@@ -130,6 +144,7 @@ export class FitDocument {
             ),
           ),
         ),
+        ...(this.ciqSettings.length ? ["Connect IQ settings"] : []),
       ],
       messages: this.messageInfo,
       subfiles: this.index.subfiles,
@@ -139,6 +154,7 @@ export class FitDocument {
       hasCharts: this.index.records.length > 0,
       hasHrv: this.index.messages.has(78) || this.index.messages.has(132),
       repairable: this.index.diagnostics.some((d) => d.repair !== "none"),
+      ...(this.ciqSettings.length ? { ciqSettings: this.ciqSettings } : {}),
     };
   }
   raw(id: number): Record<string, RawValue> {

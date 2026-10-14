@@ -24,6 +24,7 @@ test("message count tooltips identify normal, unknown and combined message IDs",
       client: new DocumentClient(),
       summary: document.summary(),
       developer: true,
+      active: true,
       download: () => {},
     }),
   );

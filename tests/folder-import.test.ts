@@ -96,7 +96,7 @@ test("folder scan honors aggregate limits, cancellation and empty-folder errors"
       100000,
       () => {},
     ),
-    /no FIT files/,
+    /no FIT or SET files/,
   );
 });
 

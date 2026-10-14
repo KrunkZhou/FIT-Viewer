@@ -1,14 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  CheckSquare2,
-  Download,
-  RotateCcw,
-  Search,
-  Square,
-  ZoomOut,
-} from "lucide-react";
+import { CheckSquare2, Download, Search, Square, ZoomOut } from "lucide-react";
 import {
   CartesianGrid,
+  Customized,
   Line,
   LineChart,
   ReferenceArea,
@@ -20,6 +14,7 @@ import {
 } from "recharts";
 import type {
   ChartData,
+  ChartDetail,
   ChartPoint,
   ExportQuery,
   Sensor,
@@ -53,6 +48,14 @@ import {
   type ChartTimeline,
 } from "./chart-time";
 import { ChartPeriodLegend, ChartTraceLegend } from "./ChartLegend";
+import { ChartHoverStore } from "./chart-hover";
+import { ChartHoverCursor } from "./ChartHoverCursor";
+import {
+  ChartDetailButton,
+  ReferenceValuesButton,
+  ValueFilterButton,
+  parseReferenceValues,
+} from "./ChartControls";
 
 const COLORS = [
   "#176856",
@@ -82,6 +85,7 @@ function Plot({
   active,
   width,
   timeScale,
+  hoverStore,
 }: {
   sensor: Sensor;
   points: ChartPoint[];
@@ -92,6 +96,7 @@ function Plot({
   onZoom: (start: number, end: number) => void;
   active: boolean;
   width: number;
+  hoverStore: ChartHoverStore;
   timeScale?: {
     domain: ChartTimeDomain;
     ticks: number[];
@@ -144,6 +149,23 @@ function Plot({
               onMouseMove={(event) => {
                 if (drag && event?.activeLabel !== undefined)
                   setDrag([drag[0], Number(event.activeLabel)]);
+                if (timeScale)
+                  hoverStore.update(
+                    event?.activeLabel,
+                    Boolean(event?.isTooltipActive),
+                    timeScale.domain,
+                  );
+              }}
+              onMouseEnter={(event) => {
+                if (timeScale)
+                  hoverStore.update(
+                    event?.activeLabel,
+                    Boolean(event?.isTooltipActive),
+                    timeScale.domain,
+                  );
+              }}
+              onMouseLeave={() => {
+                if (timeScale) hoverStore.clear();
               }}
               onMouseUp={() => {
                 if (drag && drag[0] !== drag[1])
@@ -226,6 +248,7 @@ function Plot({
                 width={52}
               />
               <Tooltip
+                cursor={!timeScale}
                 contentStyle={{
                   background: "var(--viewer-popup)",
                   borderColor: "var(--viewer-border)",
@@ -300,6 +323,16 @@ function Plot({
                   strokeDasharray="4 4"
                 />
               ))}
+              {timeScale && (
+                <Customized
+                  component={
+                    <ChartHoverCursor
+                      store={hoverStore}
+                      domain={timeScale.domain}
+                    />
+                  }
+                />
+              )}
               {drag && (
                 <ReferenceArea
                   x1={Math.min(...drag)}
@@ -353,14 +386,25 @@ export default function Charts({
   const [syncTime, setSyncTime] = useState(
     readPreference(
       "chartSyncTime",
-      false,
+      true,
       (v): v is boolean => typeof v === "boolean",
+    ),
+  );
+  const hoverStore = useMemo(() => new ChartHoverStore(), []);
+  const [detail, setDetail] = useState(
+    readPreference(
+      "chartDetail",
+      "high" as ChartDetail,
+      (v): v is ChartDetail =>
+        v === "standard" || v === "high" || v === "maximum",
     ),
   );
   const [range, setRange] = useState<{ start?: number; end?: number }>({});
   const [filter, setFilter] = useState<{ min?: number; max?: number }>({});
   const [reference, setReference] = useState("");
-  const [width, setWidth] = useState(640);
+  const [width, setWidth] = useState<number>();
+  const queryWidth =
+    width === undefined ? undefined : Math.ceil(width / 128) * 128;
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const content = useRef<HTMLDivElement>(null);
@@ -369,8 +413,8 @@ export default function Charts({
     () => groupSensors(data?.sensors ?? []),
     [data?.sensors],
   );
-  const groupRef = useRef(groups);
-  groupRef.current = groups;
+  const members = chartMemberKeys(groups, selected);
+  const memberSelection = JSON.stringify(members.length ? members : selected);
   const plots = useMemo(
     () =>
       groupMotionAxes(
@@ -405,14 +449,18 @@ export default function Charts({
     if (!domain) return undefined;
     return {
       domain,
-      ticks: chartTimeTicks(domain, width),
+      ticks: chartTimeTicks(domain, width ?? 640),
       timeline: chartTimeline([], "time", domain),
     };
   }, [syncTime, plots, range, width]);
   useEffect(() => {
-    const observer = new ResizeObserver(([entry]) =>
-      setWidth(Math.max(1, Math.round(entry.contentRect.width))),
-    );
+    hoverStore.clear();
+  }, [hoverStore, timeScale, active, client]);
+  useEffect(() => {
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width > 0)
+        setWidth(Math.max(1, Math.round(entry.contentRect.width)));
+    });
     observer.observe(content.current!);
     return () => observer.disconnect();
   }, []);
@@ -420,24 +468,18 @@ export default function Charts({
     setRange({});
   }, [dates]);
   useEffect(() => {
-    if (!active) return;
+    if (!active || queryWidth === undefined) return;
     const controller = new AbortController();
     setLoading(true);
     setError("");
-    const chosen = groupMotionAxes(
-      groupRef.current.filter((group) => selected.includes(group.sensor.key)),
-      combineXYZ,
-    );
-    const members = chartMemberKeys(groupRef.current, selected);
     client
       .request<ChartData>(
         {
           kind: "chart",
           query: {
-            sensors: members.length ? members : selected,
-            width:
-              width /
-              Math.max(1, ...chosen.map((group) => group.members.length)),
+            sensors: JSON.parse(memberSelection) as string[],
+            width: queryWidth,
+            detail,
             developer,
             ...range,
             filter,
@@ -468,13 +510,16 @@ export default function Charts({
               ),
             )
             .map((s) => s.key);
-          setSelected(
-            keep.length
-              ? keep
-              : defaults.length
-                ? defaults
-                : nextGroups.slice(0, 2).map((group) => group.sensor.key),
-          );
+          const initial = keep.length
+            ? keep
+            : defaults.length
+              ? defaults
+              : nextGroups.slice(0, 2).map((group) => group.sensor.key);
+          if (
+            initial.length !== selected.length ||
+            initial.some((key, index) => key !== selected[index])
+          )
+            setSelected(initial);
         } else if (
           keep.length !== selected.length ||
           keep.some((key, index) => key !== selected[index])
@@ -492,12 +537,13 @@ export default function Charts({
   }, [
     client,
     selected,
-    width,
+    memberSelection,
+    queryWidth,
+    detail,
     developer,
     range,
     filter,
     active,
-    combineXYZ,
     dates,
   ]);
   const change = (values: string[]) => {
@@ -508,12 +554,10 @@ export default function Charts({
   const available = groups
     .map((group) => group.sensor)
     .filter((s) => s.name.toLowerCase().includes(search.toLowerCase()));
-  const references = reference
-    .split(",")
-    .map((v) => v.trim())
-    .filter(Boolean)
-    .map(Number)
-    .filter(Number.isFinite);
+  const references = useMemo(
+    () => parseReferenceValues(reference),
+    [reference],
+  );
   return (
     <div className="viewer-chart-workspace">
       <aside className="viewer-sensor-sidebar">
@@ -523,6 +567,7 @@ export default function Charts({
           </h2>
           <IconButton
             title="Select visible sensors"
+            tooltip="Select all sensors matching the sidebar search"
             onClick={() =>
               change(
                 Array.from(
@@ -533,7 +578,11 @@ export default function Charts({
           >
             <CheckSquare2 size={16} />
           </IconButton>
-          <IconButton title="Clear sensors" onClick={() => change([])}>
+          <IconButton
+            title="Clear sensors"
+            tooltip="Deselect all chart sensors"
+            onClick={() => change([])}
+          >
             <Square size={16} />
           </IconButton>
         </div>
@@ -594,7 +643,7 @@ export default function Charts({
             Sync time
             <Toggle
               label="Sync time"
-              tooltip="Align time ranges, ticks and date dividers across all charts. Sample-index charts stay independent."
+              tooltip="Align time ranges, ticks, date dividers and hover cursors across all charts. Sample-index charts stay independent."
               checked={syncTime}
               onChange={(checked) => {
                 setSyncTime(checked);
@@ -602,6 +651,15 @@ export default function Charts({
               }}
             />
           </label>
+          <ReferenceValuesButton value={reference} onChange={setReference} />
+          <ValueFilterButton value={filter} onChange={setFilter} />
+          <ChartDetailButton
+            value={detail}
+            onChange={(next) => {
+              setDetail(next);
+              savePreference("chartDetail", next);
+            }}
+          />
           <DateRangeFilter
             value={dates}
             onChange={onDatesChange}
@@ -630,57 +688,6 @@ export default function Charts({
           >
             <Download size={17} />
           </IconButton>
-          <div className="viewer-chart-filter">
-            <label>
-              Min{" "}
-              <input
-                type="number"
-                aria-label="Minimum chart value"
-                value={filter.min ?? ""}
-                onChange={(event) =>
-                  setFilter((f) => ({
-                    ...f,
-                    min:
-                      event.target.value === ""
-                        ? undefined
-                        : Number(event.target.value),
-                  }))
-                }
-              />
-            </label>
-            <label>
-              Max{" "}
-              <input
-                type="number"
-                aria-label="Maximum chart value"
-                value={filter.max ?? ""}
-                onChange={(event) =>
-                  setFilter((f) => ({
-                    ...f,
-                    max:
-                      event.target.value === ""
-                        ? undefined
-                        : Number(event.target.value),
-                  }))
-                }
-              />
-            </label>
-            <IconButton
-              title="Clear value filter"
-              tooltip="Clear minimum and maximum value filters"
-              onClick={() => setFilter({})}
-            >
-              <RotateCcw size={15} />
-            </IconButton>
-          </div>
-          <label className="viewer-chart-references">
-            Reference values{" "}
-            <input
-              value={reference}
-              onChange={(event) => setReference(event.target.value)}
-              aria-label="Reference values"
-            />
-          </label>
         </div>
         {error && (
           <p role="alert" className="error">
@@ -693,11 +700,12 @@ export default function Charts({
             {plots.map(({ sensor, traces, lines, points }) => {
               return (
                 <Plot
-                  width={width}
+                  width={width ?? 640}
                   active={active}
                   sensor={sensor}
                   points={points}
                   timeScale={sensor.axis === "sample" ? undefined : timeScale}
+                  hoverStore={hoverStore}
                   traces={traces}
                   lines={lines}
                   color={sensorColor(sensor)}

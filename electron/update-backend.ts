@@ -116,7 +116,7 @@ export function createUpdateBackend(
       }
     },
     install() {
-      updater.quitAndInstall(false, true);
+      updater.quitAndInstall(true, true);
     },
   };
 }

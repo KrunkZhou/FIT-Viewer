@@ -5,10 +5,13 @@ import { resolve } from "node:path";
 import { app, type BrowserWindow } from "electron";
 import { createWindow, registerBundle } from "./app";
 import { activity } from "../tests/fixtures";
+import { syntheticSettings } from "../tests/ciq-fixtures";
 import {
   checkAppInformation,
+  checkCiqRenderer,
   checkDesktopSelection,
   checkDesktopNotifications,
+  checkMapTimeline,
   checkRenderer,
 } from "./smoke-renderer";
 import { OpenFiles } from "./open-files";
@@ -85,10 +88,21 @@ app
     assert.equal(result.chart, true);
     assert.equal(result.removedStatus, 404);
     assert.equal(result.nodeAccess, "undefined");
+    const timeline = await window.webContents.executeJavaScript(
+      `(${checkMapTimeline.toString()})()`,
+    );
+    const ciq = await window.webContents.executeJavaScript(
+      `(${checkCiqRenderer.toString()})(${JSON.stringify(Array.from(syntheticSettings()))}, ${JSON.stringify(bytes)})`,
+    );
+    const ciqImage = await window.webContents.capturePage();
+    await writeFile(".cache/electron-ciq-smoke.png", ciqImage.toPNG());
+    await window.webContents.executeJavaScript(
+      `(${checkRenderer.toString()})(${JSON.stringify(bytes)})`,
+    );
     const image = await window.webContents.capturePage();
     await writeFile(".cache/electron-smoke.png", image.toPNG());
     console.log(
-      `Desktop smoke passed: ${JSON.stringify({ ...result, initial, replacement, info, prompts })}`,
+      `Desktop smoke passed: ${JSON.stringify({ ...result, initial, replacement, info, prompts, ciq, timeline })}`,
     );
     clearTimeout(timeout);
     window.destroy();

@@ -4,7 +4,9 @@ import { basename, isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   isDesktopFileUrl,
-  isFitPath,
+  isDocumentPath,
+  isIgnoredPath,
+  isZipPath,
   DESKTOP_IMPORT_LIMIT_BYTES,
   MAX_INPUT_FILES,
   type FileSet,
@@ -28,7 +30,8 @@ export async function launchFiles(
   ];
   const paths: string[] = [];
   for (const path of candidates) {
-    if (/\.(fit|zip)$/i.test(path)) paths.push(path);
+    if (isIgnoredPath(path)) continue;
+    if (isDocumentPath(path) || isZipPath(path)) paths.push(path);
     else if (
       await lstat(path).then(
         (stat) => stat.isDirectory(),
@@ -71,6 +74,7 @@ export class FileAccess {
       nested: boolean,
     ): Promise<void> => {
       if (!active()) return;
+      if (isIgnoredPath(name) || isIgnoredPath(path)) return;
       const stat = await lstat(path);
       if (!active()) return;
       if (stat.isDirectory()) {
@@ -82,9 +86,11 @@ export class FileAccess {
           if (!active()) return;
           if (++visited > 100000)
             throw new Error("The selected folder is too large.");
-          if (entry.name === "__MACOSX" || entry.name.startsWith("._"))
-            continue;
-          if (entry.isDirectory() || (entry.isFile() && isFitPath(entry.name)))
+          if (isIgnoredPath(entry.name)) continue;
+          if (
+            entry.isDirectory() ||
+            (entry.isFile() && isDocumentPath(entry.name))
+          )
             await visit(
               join(path, entry.name),
               `${name}/${entry.name}`,
@@ -95,13 +101,19 @@ export class FileAccess {
         return;
       }
       if (!stat.isFile())
-        throw new Error("Select a regular FIT or ZIP file or folder.");
-      if (nested ? !isFitPath(name) : !/\.(fit|zip)$/i.test(path))
-        throw new Error("Only FIT or ZIP files or folders can be opened.");
+        throw new Error("Select a regular FIT, SET or ZIP file or folder.");
+      if (
+        nested
+          ? !isDocumentPath(name)
+          : !isDocumentPath(path) && !isZipPath(path)
+      )
+        throw new Error("Only FIT, SET or ZIP files or folders can be opened.");
       if (seen.has(path)) return;
       seen.add(path);
       if (files.length >= MAX_INPUT_FILES)
-        throw new Error(`Select no more than ${MAX_INPUT_FILES} FIT files.`);
+        throw new Error(
+          `Select no more than ${MAX_INPUT_FILES} FIT or SET files.`,
+        );
       total += stat.size;
       if (total > this.maxBytes)
         throw new Error(
@@ -114,13 +126,13 @@ export class FileAccess {
     for (const path of unique) {
       if (!isAbsolute(path))
         throw new Error(
-          "Only absolute FIT or ZIP file or folder paths can be opened.",
+          "Only absolute FIT, SET or ZIP file or folder paths can be opened.",
         );
       await visit(resolve(path), basename(path), 0, false);
       if (!active()) return;
     }
     if (!files.length)
-      throw new Error("The selected folders contain no FIT files.");
+      throw new Error("The selected folders contain no FIT or SET files.");
     files.sort((a, b) => a.name.localeCompare(b.name));
     this.files = next;
     return {

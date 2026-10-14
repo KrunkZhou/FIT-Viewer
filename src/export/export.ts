@@ -50,6 +50,8 @@ export async function exportDocument(
   const parts: BlobPart[] = [];
   const encoder = new TextEncoder();
   if (query.format === "fit") {
+    if (document.ciqSettings.length && !document.index.subfiles.length)
+      throw new Error("CIQ settings files cannot be repaired as FIT files.");
     if (document.sources.length > 1) return repairArchive(document, job);
     const result = await repair(document, job);
     return {
@@ -189,8 +191,7 @@ export async function exportDocument(
         parts.push(point(entry.point, "wpt"));
     parts.push(`<trk><name>${xml(base)}</name>`);
     let segment = false;
-    let subfile = -1;
-    let previous: number | undefined;
+    let route: number | undefined;
     let batch: string[] = [];
     const flush = () => {
       if (batch.length) {
@@ -201,24 +202,18 @@ export async function exportDocument(
     for await (const entry of mapPositions(document, job, query.dates)) {
       if (entry.message !== 20) continue;
       const p = entry.point;
-      if (
-        segment &&
-        (!p ||
-          subfile !== entry.subfile ||
-          (previous !== undefined && p.time !== undefined && p.time < previous))
-      ) {
+      if (!p) continue;
+      if (segment && route !== entry.route) {
         flush();
         parts.push("</trkseg>");
         segment = false;
       }
-      if (!p) continue;
       if (!segment) {
         parts.push("<trkseg>");
         segment = true;
       }
       batch.push(point(p, "trkpt"));
-      subfile = entry.subfile;
-      previous = p.time;
+      route = entry.route;
       if (batch.length >= 256) {
         flush();
         await job.yield();

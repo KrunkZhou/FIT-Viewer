@@ -17,6 +17,7 @@ import {
   LoaderCircle,
   Map,
   Moon,
+  SlidersHorizontal,
   Sun,
   Upload,
   X,
@@ -35,6 +36,7 @@ import { Downloads } from "./ui/download";
 import type { DocumentSummary, ExportQuery, TimeRange } from "./model";
 import { ControlTooltip } from "./ui/ControlTooltip";
 import { Overview } from "./ui/Overview";
+import { CiqSettings } from "./ui/CiqSettings";
 import { Messages } from "./ui/Messages";
 import { Diagnostics } from "./ui/Diagnostics";
 import {
@@ -48,7 +50,47 @@ import {
 } from "./ui/controls";
 const Charts = lazy(() => import("./ui/Charts"));
 const ActivityMap = lazy(() => import("./ui/Map"));
-type Tab = "overview" | "messages" | "map" | "chart" | "diagnostics";
+type Tab =
+  "overview" | "messages" | "settings" | "map" | "chart" | "diagnostics";
+
+export function initialDocumentTab(summary: DocumentSummary): Tab {
+  return summary.ciqSettings?.length && !summary.subfiles.length
+    ? "settings"
+    : "overview";
+}
+
+export function documentTabs(summary?: DocumentSummary) {
+  return [
+    { id: "overview" as const, title: "Overview", icon: LayoutDashboard },
+    ...(summary?.subfiles.length
+      ? [{ id: "messages" as const, title: "Messages", icon: ClipboardList }]
+      : []),
+    ...(summary?.ciqSettings?.length
+      ? [
+          {
+            id: "settings" as const,
+            title: "CIQ Settings",
+            icon: SlidersHorizontal,
+          },
+        ]
+      : []),
+    ...(summary?.hasMap
+      ? [{ id: "map" as const, title: "Map", icon: Map }]
+      : []),
+    ...(summary?.hasCharts
+      ? [{ id: "chart" as const, title: "Chart", icon: Activity }]
+      : []),
+    ...(summary?.diagnosticCount
+      ? [
+          {
+            id: "diagnostics" as const,
+            title: "Diagnostics",
+            icon: AlertTriangle,
+          },
+        ]
+      : []),
+  ];
+}
 
 export default function App() {
   const desktop = typeof window === "undefined" ? undefined : window.fitDesktop;
@@ -167,8 +209,9 @@ export default function App() {
       if (id !== generation.current || controller.signal.aborted) return;
       setWorkspace(result);
       setSummary(result);
-      setTab("overview");
-      setVisited(["overview"]);
+      const initialTab = initialDocumentTab(result);
+      setTab(initialTab);
+      setVisited([initialTab]);
       setTarget(undefined);
     } catch (error) {
       if (id === generation.current && (error as Error).name !== "AbortError") {
@@ -204,8 +247,9 @@ export default function App() {
       );
       if (id !== generation.current || controller.signal.aborted) return;
       setSummary(result);
-      setTab("overview");
-      setVisited(["overview"]);
+      const initialTab = initialDocumentTab(result);
+      setTab(initialTab);
+      setVisited([initialTab]);
       setTarget(undefined);
     } catch (error) {
       if (id === generation.current && (error as Error).name !== "AbortError")
@@ -273,31 +317,13 @@ export default function App() {
       });
     } else void runExport(query);
   }
-  const tabs = [
-    { id: "overview" as const, title: "Overview", icon: LayoutDashboard },
-    { id: "messages" as const, title: "Messages", icon: ClipboardList },
-    ...(summary?.hasMap
-      ? [{ id: "map" as const, title: "Map", icon: Map }]
-      : []),
-    ...(summary?.hasCharts
-      ? [{ id: "chart" as const, title: "Chart", icon: Activity }]
-      : []),
-    ...(summary?.diagnosticCount
-      ? [
-          {
-            id: "diagnostics" as const,
-            title: "Diagnostics",
-            icon: AlertTriangle,
-          },
-        ]
-      : []),
-  ];
+  const tabs = documentTabs(summary);
   const content = summary ? (
     <Fragment key={generation.current}>
       <div className="section-view" hidden={tab !== "overview"}>
         <Overview summary={summary} diagnostics={() => setTab("diagnostics")} />
       </div>
-      {visited.includes("messages") && (
+      {summary.subfiles.length > 0 && visited.includes("messages") && (
         <div className="section-view" hidden={tab !== "messages"}>
           <Messages
             client={client}
@@ -305,9 +331,15 @@ export default function App() {
             developer={developer}
             download={download}
             target={target}
+            active={tab === "messages"}
           />
         </div>
       )}
+      {summary.ciqSettings?.length && visited.includes("settings") ? (
+        <div className="section-view" hidden={tab !== "settings"}>
+          <CiqSettings files={summary.ciqSettings} />
+        </div>
+      ) : null}
       {summary.hasMap && visited.includes("map") && (
         <div className="section-view" hidden={tab !== "map"}>
           <ActivityMap
@@ -316,6 +348,10 @@ export default function App() {
             download={download}
             dates={dates}
             onDatesChange={setDates}
+            onGoToData={(record) => {
+              setTarget({ message: 20, record });
+              setTab("messages");
+            }}
           />
         </div>
       )}
@@ -362,7 +398,9 @@ export default function App() {
           <Upload size={36} />
         )}
         <span>
-          {busy ? "Opening FIT files..." : "Drop or open FIT files here"}
+          {busy
+            ? "Opening FIT or SET files..."
+            : "Drop or open FIT or SET files here"}
         </span>
       </button>
     </div>
@@ -378,7 +416,10 @@ export default function App() {
           void open((signal, limit) =>
             collectDrop(drop, signal, limit, (count) => {
               if (!signal.aborted)
-                setProgress({ value: 0, phase: `Finding FIT files: ${count}` });
+                setProgress({
+                  value: 0,
+                  phase: `Finding FIT or SET files: ${count}`,
+                });
             }),
           );
       }}
@@ -387,9 +428,9 @@ export default function App() {
         ref={fileInput}
         type="file"
         multiple
-        accept=".fit,.zip"
+        accept=".fit,.set,.zip"
         className="file-input"
-        aria-label="Open FIT file"
+        aria-label="Open FIT or SET file"
         onChange={(event) => {
           const files = Array.from(event.target.files ?? []);
           event.target.value = "";
@@ -407,7 +448,7 @@ export default function App() {
           multiple
           {...{ webkitdirectory: "" }}
           className="file-input"
-          aria-label="Open FIT folder"
+          aria-label="Open FIT or SET folder"
           onChange={(event) => {
             const files = Array.from(event.target.files ?? []);
             event.target.value = "";
@@ -489,20 +530,20 @@ export default function App() {
               </IconButton>
             )}
             {summary && (
-              <ControlTooltip content="Open FIT files or ZIP archives">
+              <ControlTooltip content="Open FIT or SET files or ZIP archives">
                 <button
                   className="open-file"
                   onClick={() => fileInput.current?.click()}
                 >
                   <Upload size={15} />
-                  <span>Open FIT file</span>
+                  <span>Open</span>
                 </button>
               </ControlTooltip>
             )}
             {desktop && summary && (
               <IconButton
-                title="Open FIT folder"
-                tooltip="Open a folder containing FIT files"
+                title="Open FIT or SET folder"
+                tooltip="Open a folder containing FIT or SET files"
                 onClick={() => folderInput.current?.click()}
               >
                 <FolderOpen size={18} />
@@ -576,6 +617,11 @@ export default function App() {
                     {id === "diagnostics" && (
                       <span className="viewer-tab-count">
                         {summary?.diagnosticCount}
+                      </span>
+                    )}
+                    {id === "settings" && (
+                      <span className="viewer-tab-count">
+                        {summary?.ciqSettings?.length}
                       </span>
                     )}
                   </button>

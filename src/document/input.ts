@@ -37,10 +37,23 @@ export function isDesktopFileUrl(url: string): boolean {
 }
 
 export function isFitPath(name: string): boolean {
-  return (
-    /\.fit$/i.test(name) &&
-    !name
-      .split(/[\\/]/)
-      .some((part) => part === "__MACOSX" || part.startsWith("._"))
-  );
+  return /\.fit$/i.test(name) && !isIgnoredPath(name);
+}
+
+export function isSetPath(name: string): boolean {
+  return /\.set$/i.test(name) && !isIgnoredPath(name);
+}
+
+export function isDocumentPath(name: string): boolean {
+  return isFitPath(name) || isSetPath(name);
+}
+
+export function isZipPath(name: string): boolean {
+  return /\.zip$/i.test(name) && !isIgnoredPath(name);
+}
+
+export function isIgnoredPath(name: string): boolean {
+  return name
+    .split(/[\\/]/)
+    .some((part) => part === "__MACOSX" || part.startsWith("._"));
 }

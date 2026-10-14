@@ -35,12 +35,14 @@ export function Messages({
   developer,
   download,
   target,
+  active: visible,
 }: {
   client: DocumentClient;
   summary: DocumentSummary;
   developer: boolean;
   download: (query: ExportQuery) => void;
   target?: { message: number; record: number };
+  active: boolean;
 }) {
   const [selected, setSelected] = useState(
     summary.messages.some((m) => m.id === 20)
@@ -63,6 +65,7 @@ export function Messages({
   const [data, setData] = useState<TablePage>();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const selectedRow = useRef<HTMLTableRowElement>(null);
   const [searchDate, setSearchDate] = useState(
     dateInputValue(summary.startTimestamp),
   );
@@ -84,6 +87,7 @@ export function Messages({
         separate[0]?.id ??
         (singletons.length ? -1 : undefined));
   useEffect(() => {
+    const pending = pendingTarget.current;
     setQuery((q) => ({
       ...q,
       message: active ?? 0,
@@ -91,10 +95,7 @@ export function Messages({
       page: 0,
       filters: {},
       timestamp: undefined,
-      target:
-        pendingTarget.current?.message === active
-          ? pendingTarget.current.record
-          : undefined,
+      target: pending?.message === active ? pending.record : undefined,
     }));
     pendingTarget.current = undefined;
   }, [active, developer]);
@@ -108,6 +109,8 @@ export function Messages({
         ...q,
         message: target.message,
         target: target.record,
+        page: 0,
+        filters: {},
         timestamp: undefined,
       }));
     }
@@ -125,7 +128,9 @@ export function Messages({
     setError("");
     client
       .request<TablePage>({ kind: "table", query }, controller.signal)
-      .then(setData)
+      .then((next) => {
+        if (!controller.signal.aborted) setData(next);
+      })
       .catch((error) => {
         if (error.name !== "AbortError") setError(error.message);
       })
@@ -134,6 +139,17 @@ export function Messages({
       });
     return () => controller.abort();
   }, [client, query, active, developer]);
+  useEffect(() => {
+    if (
+      !visible ||
+      loading ||
+      !selectedRow.current ||
+      (query.target !== undefined && data?.selected !== query.target)
+    )
+      return;
+    selectedRow.current.scrollIntoView({ block: "nearest", inline: "nearest" });
+    selectedRow.current.focus({ preventScroll: true });
+  }, [data, visible, loading, query.target]);
   const changePage = (page: number) =>
     setQuery((q) => ({ ...q, page, timestamp: undefined, target: undefined }));
   const pages = Math.max(1, Math.ceil((data?.total ?? 0) / query.size));
@@ -443,6 +459,15 @@ export function Messages({
                       {data?.rows.map((row) => (
                         <tr
                           key={row.index}
+                          ref={
+                            row.index === data.selected
+                              ? selectedRow
+                              : undefined
+                          }
+                          tabIndex={
+                            row.index === data.selected ? -1 : undefined
+                          }
+                          data-record={row.index}
                           className={
                             row.index === data.selected ? "selected-row" : ""
                           }

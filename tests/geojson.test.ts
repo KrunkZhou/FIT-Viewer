@@ -52,7 +52,7 @@ test("GeoJSON retains full-resolution GPS data, coordinate order, and metric att
   assert.deepEqual(bytes, before);
 });
 
-test("GeoJSON route IDs split at invalid GPS, reversed time and subfiles without losing zero or missing values", async () => {
+test("GeoJSON joins short GPS gaps but splits reversed time and subfiles without losing zero or missing values", async () => {
   const gps = (time: number, lat: number): Field[] => [
     [253, 6, time],
     [0, 5, lat],
@@ -101,7 +101,7 @@ test("GeoJSON route IDs split at invalid GPS, reversed time and subfiles without
   );
   assert.deepEqual(
     track.map((point) => point.properties.route_id),
-    [1, 1, 2, 3, 4],
+    [1, 1, 1, 2, 3],
   );
   assert.deepEqual(
     track.map((point) => point.properties.subfile),

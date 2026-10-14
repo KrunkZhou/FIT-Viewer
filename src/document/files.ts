@@ -4,7 +4,7 @@ import { zipChunks } from "./zip-stream";
 import {
   ImportSizeError,
   isDesktopFileUrl,
-  isFitPath,
+  isDocumentPath,
   MAX_INPUT_FILES,
   type DesktopFile,
   type DocumentInput,
@@ -41,7 +41,9 @@ export async function loadFile(
     const loaded = await loadSingleFile(file, limit - total, job);
     for (const source of loaded.sources) {
       if (sources.length >= MAX_INPUT_FILES)
-        throw new Error(`Select no more than ${MAX_INPUT_FILES} FIT files.`);
+        throw new Error(
+          `Select no more than ${MAX_INPUT_FILES} FIT or SET files.`,
+        );
       total += source.bytes.length;
       sources.push({
         ...source,
@@ -87,12 +89,12 @@ async function loadSingleFile(
   const zip = await JSZip.loadAsync(bytes);
   await job.yield();
   const entries = Object.values(zip.files).filter(
-    (f) => !f.dir && isFitPath(f.name),
+    (f) => !f.dir && isDocumentPath(f.name),
   );
   if (!entries.length)
-    throw new Error("The ZIP archive contains no FIT files.");
+    throw new Error("The ZIP archive contains no FIT or SET files.");
   if (entries.length > MAX_INPUT_FILES)
-    throw new Error(`Select no more than ${MAX_INPUT_FILES} FIT files.`);
+    throw new Error(`Select no more than ${MAX_INPUT_FILES} FIT or SET files.`);
   const sources: SourceInput[] = [];
   let total = 0;
   for (const [index, entry] of entries.entries()) {

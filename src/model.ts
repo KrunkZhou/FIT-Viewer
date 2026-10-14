@@ -1,3 +1,5 @@
+import type { CiqDictionary } from "./protocol/ciq-settings";
+
 export type Scalar = number | bigint | string | null;
 export type RawValue = Scalar | Scalar[];
 export type DisplayValue = Scalar | Scalar[];
@@ -94,6 +96,12 @@ export interface DocumentSummary {
   hasCharts: boolean;
   hasHrv: boolean;
   repairable: boolean;
+  ciqSettings?: CiqSettingsFile[];
+}
+export interface CiqSettingsFile {
+  source: number;
+  filename: string;
+  settings: CiqDictionary;
 }
 export interface SourceInfo {
   id: number;
@@ -161,6 +169,7 @@ export interface ChartPoint {
   time: number;
   value: number | null;
 }
+export type ChartDetail = "standard" | "high" | "maximum";
 export interface ChartQuery {
   sensors: string[];
   width: number;
@@ -169,6 +178,7 @@ export interface ChartQuery {
   developer: boolean;
   filter?: { min?: number; max?: number };
   dates?: TimeRange;
+  detail?: ChartDetail;
 }
 export interface TimeRange {
   start?: number;
@@ -198,6 +208,17 @@ export interface MapData {
   tracks: Position[][];
   points: MapPoint[];
   routeNames?: string[];
+  playback?: { id: number; routes: MapPlaybackRoute[] };
+}
+export interface MapPlaybackRoute {
+  route: number;
+  start: number;
+  end: number;
+  count: number;
+}
+export interface MapPlaybackPosition extends Position {
+  route: number;
+  time: number;
 }
 export interface ExportQuery {
   format: "csv" | "gpx" | "geojson" | "hrv" | "json" | "fit";
@@ -229,6 +250,7 @@ export type RequestPayload = (
   | { kind: "singletons"; developer: boolean }
   | { kind: "chart"; query: ChartQuery }
   | { kind: "map"; dates?: TimeRange }
+  | { kind: "map-position"; mapId: number; time: number; routes: number[] }
   | { kind: "diagnostics"; page: number; size: number }
   | { kind: "export"; query: ExportQuery }
   | { kind: "cancel"; target: number }
@@ -248,6 +270,7 @@ export type WorkerResponsePayload =
         | DiagnosticPage
         | ChartData
         | MapData
+        | MapPlaybackPosition
         | ExportResult
         | null;
     }

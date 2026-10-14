@@ -1,6 +1,8 @@
 import {
   ImportSizeError,
-  isFitPath,
+  isDocumentPath,
+  isIgnoredPath,
+  isZipPath,
   MAX_INPUT_FILES,
   type FileSet,
 } from "../document/input";
@@ -32,14 +34,16 @@ export async function collectDrop(
   let visited = 0;
   const add = (file: File, name = file.name) => {
     signal.throwIfAborted();
-    if (!isFitPath(name) && !/\.zip$/i.test(name)) return;
+    if (!isDocumentPath(name) && !isZipPath(name)) return;
     total += file.size;
     if (total > limit)
       throw new ImportSizeError(
         `The selected files exceed the configured size limit (${Math.round(limit / 1048576)} MiB).`,
       );
     if (files.length >= MAX_INPUT_FILES)
-      throw new Error(`Select no more than ${MAX_INPUT_FILES} FIT files.`);
+      throw new Error(
+        `Select no more than ${MAX_INPUT_FILES} FIT or SET files.`,
+      );
     files.push(
       name === file.name
         ? file
@@ -57,12 +61,12 @@ export async function collectDrop(
       throw new Error("The selected folder is too large or too deeply nested.");
     if (visited % 128 === 0)
       await new Promise((resolve) => setTimeout(resolve, 0));
-    if (entry.name === "__MACOSX" || entry.name.startsWith("._")) return;
+    if (isIgnoredPath(entry.name)) return;
     const name = path + entry.name;
     if (entry.isFile) {
-      // A folder import selects FIT files, not arbitrary nested archives.
-      if (path && !isFitPath(name)) return;
-      if (!path && !isFitPath(name) && !/\.zip$/i.test(name)) return;
+      // Folder imports select document files, leaving nested archives unopened.
+      if (path && !isDocumentPath(name)) return;
+      if (!path && !isDocumentPath(name) && !isZipPath(name)) return;
       const file = await new Promise<File>((resolve, reject) =>
         (entry as FileSystemFileEntry).file(resolve, reject),
       );
@@ -85,13 +89,14 @@ export async function collectDrop(
     for (const file of drop.files) {
       if (++visited % 128 === 0)
         await new Promise((resolve) => setTimeout(resolve, 0));
-      if (file.webkitRelativePath && !isFitPath(file.webkitRelativePath))
+      if (file.webkitRelativePath && !isDocumentPath(file.webkitRelativePath))
         continue;
       add(file, file.webkitRelativePath || file.name);
     }
   }
   signal.throwIfAborted();
-  if (!files.length) throw new Error("The selection contains no FIT files.");
+  if (!files.length)
+    throw new Error("The selection contains no FIT or SET files.");
   files.sort((a, b) => a.name.localeCompare(b.name));
   return {
     name:

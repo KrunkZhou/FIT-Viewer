@@ -12,6 +12,7 @@ import { readValue, valid, WIDTHS } from "../protocol/binary";
 import type { FitDocument } from "./document";
 import { SampleStatistics } from "./sample-statistics";
 import { hasTimeRange, inTimeRange } from "./time-range";
+import { chartPointBudget } from "./chart-sampling";
 
 export function isMotionSensor(sensor: Sensor): boolean {
   const [keyMessage, keyField] = sensor.key.split(":");
@@ -25,6 +26,13 @@ export function isMotionSensor(sensor: Sensor): boolean {
   );
 }
 type Location = { wire: WireField; offset: number };
+function sampleCount(wire?: WireField): number {
+  if (!wire) return 0;
+  const type = wire.type & 31;
+  if (type === 7) return 1;
+  const width = WIDTHS[type];
+  return width && wire.size % width === 0 ? wire.size / width : wire.size;
+}
 const layouts = new WeakMap<Definition, Map<boolean, Map<number, Location>>>();
 function layout(record: RecordRef): Map<number, Location> {
   let cached = layouts.get(record.definition);
@@ -47,6 +55,7 @@ function values(
   document: FitDocument,
   record: RecordRef,
   location?: Location,
+  interpretation?: { scale?: number; offset?: number },
 ): (number | null)[] {
   if (!location) return [];
   const raw = readValue(
@@ -55,11 +64,20 @@ function values(
     location.wire,
     record.definition.littleEndian,
   );
-  return (Array.isArray(raw) ? raw : [raw]).map((value) =>
-    typeof value === "number" && valid(value, location.wire.type)
-      ? value
-      : null,
-  );
+  // readValue owns this fresh array; interpreting it in place avoids a copy per axis packet.
+  const samples = Array.isArray(raw) ? raw : [raw];
+  const scale = interpretation?.scale ?? 1;
+  const offset = interpretation?.offset ?? 0;
+  for (let i = 0; i < samples.length; i++) {
+    const value = samples[i];
+    samples[i] =
+      typeof value === "number" && valid(value, location.wire.type)
+        ? interpretation
+          ? value / scale - offset
+          : value
+        : null;
+  }
+  return samples as (number | null)[];
 }
 interface Packet {
   times: (number | undefined)[];
@@ -72,29 +90,45 @@ function* packets(
   fields: FieldInfo[],
   developer: boolean,
   source?: number,
+  range?: ChartQuery,
 ): Generator<Packet> {
   for (const id of document.recordIds(message, source)) {
     const record = document.index.records[id];
     const locations = layout(record);
     const ms = values(document, record, locations.get(0))[0];
     const offsets = values(document, record, locations.get(1));
-    const axes = fields.map((field) =>
-      values(document, record, locations.get(field.id)).map((value) =>
-        value === null || developer
-          ? value
-          : value / (field.scale ?? 1) - (field.offset ?? 0),
-      ),
+    const count = Math.max(
+      offsets.length,
+      ...fields.map((field) => sampleCount(locations.get(field.id)?.wire)),
     );
-    const count = Math.max(offsets.length, ...axes.map((axis) => axis.length));
     const anchored =
       record.timestamp !== undefined && ms !== null && ms !== undefined;
+    const times = Array.from({ length: count }, (_, i) =>
+      anchored && typeof offsets[i] === "number"
+        ? record.timestamp! + (ms! + offsets[i]!) / 1000
+        : undefined,
+    );
+    const visible =
+      !range ||
+      times.some(
+        (time) =>
+          time !== undefined &&
+          (range.start === undefined || time >= range.start) &&
+          (range.end === undefined || time <= range.end) &&
+          inTimeRange(time, range.dates),
+      );
     yield {
-      times: Array.from({ length: count }, (_, i) =>
-        anchored && typeof offsets[i] === "number"
-          ? record.timestamp! + (ms! + offsets[i]!) / 1000
-          : undefined,
-      ),
-      axes,
+      times,
+      axes: visible
+        ? fields.map((field) =>
+            values(
+              document,
+              record,
+              locations.get(field.id),
+              developer ? undefined : field,
+            ),
+          )
+        : [],
       subfile: record.subfile,
     };
   }
@@ -198,72 +232,92 @@ interface MotionPoint {
 interface MotionSample extends MotionPoint {
   gaps: (MotionPoint | undefined)[];
 }
-interface EnvelopePoint extends ChartPoint {
-  sample: MotionSample;
-}
-interface Candidate {
-  point: EnvelopePoint;
-  index: number;
-  segment: number;
-  gap?: EnvelopePoint;
-}
 class Envelope {
-  readonly points: EnvelopePoint[] = [];
+  private points = new Map<number, MotionPoint>();
   private index = 0;
-  private segment = 0;
-  private gap?: EnvelopePoint;
-  private previous?: Candidate;
-  private first?: Candidate;
-  private last?: Candidate;
-  private minimum?: Candidate;
-  private maximum?: Candidate;
-  constructor(private readonly size: number) {}
-  add(sample: MotionSample, axis: number): void {
+  private currentIndex = 0;
+  private time = 0;
+  private current?: MotionSample;
+  private gapPoint?: MotionPoint;
+  private first?: MotionSample;
+  private minimum: (MotionSample | undefined)[];
+  private maximum: (MotionSample | undefined)[];
+  private gaps: (MotionPoint | undefined)[];
+  private values: (number | null)[];
+  constructor(
+    private readonly size: number,
+    private readonly axes: number,
+    private readonly filter: ChartQuery["filter"],
+  ) {
+    this.minimum = Array(axes);
+    this.maximum = Array(axes);
+    this.gaps = Array(axes);
+    this.values = Array(axes);
+  }
+  add(time: number, axes?: (number | null)[][], sample = 0): void {
     if (this.index && this.index % this.size === 0) this.flush();
-    const value = sample.values[axis] ?? null;
-    const point = { time: sample.time, value, sample };
-    if (value === null) {
-      this.segment++;
-      this.gap = point;
+    this.currentIndex = this.index;
+    this.time = time;
+    this.current = undefined;
+    this.gapPoint = undefined;
+    let missing = false;
+    for (let axis = 0; axis < this.axes; axis++) {
+      let value = axes?.[axis]?.[sample] ?? null;
+      if (
+        value !== null &&
+        ((this.filter?.min !== undefined && value < this.filter.min) ||
+          (this.filter?.max !== undefined && value > this.filter.max))
+      )
+        value = null;
+      this.values[axis] = value;
+      missing ||= value === null;
     }
-    const candidate = {
-      point,
-      index: this.index++,
-      segment: this.segment,
-      gap: this.gap,
-    };
-    this.first ??= candidate;
-    this.last = candidate;
-    if (value !== null) {
-      if (!this.minimum || value < this.minimum.point.value!)
-        this.minimum = candidate;
-      if (!this.maximum || value > this.maximum.point.value!)
-        this.maximum = candidate;
+    if (missing) {
+      this.gapPoint = { time, index: this.index, values: [...this.values] };
+      for (let axis = 0; axis < this.axes; axis++)
+        if (this.values[axis] === null) this.gaps[axis] = this.gapPoint;
     }
+    this.first ??= this.capture();
+    for (let axis = 0; axis < this.axes; axis++) {
+      const value = this.values[axis];
+      if (value === null) continue;
+      if (!this.minimum[axis] || value < this.minimum[axis]!.values[axis]!)
+        this.minimum[axis] = this.capture();
+      if (!this.maximum[axis] || value > this.maximum[axis]!.values[axis]!)
+        this.maximum[axis] = this.capture();
+    }
+    this.index++;
+  }
+  private capture(): MotionSample {
+    return (this.current ??= {
+      ...(this.gapPoint ?? {
+        time: this.time,
+        index: this.currentIndex,
+        values: [...this.values],
+      }),
+      gaps: [...this.gaps],
+    });
   }
   private flush(): void {
-    const keep = new Map<number, Candidate>();
-    for (const candidate of [this.first, this.minimum, this.maximum, this.last])
-      if (candidate) keep.set(candidate.index, candidate);
-    for (const candidate of [...keep.values()].sort(
-      (a, b) => a.index - b.index,
-    )) {
-      if (
-        this.previous?.point.value !== null &&
-        this.previous !== undefined &&
-        candidate.point.value !== null &&
-        candidate.segment !== this.previous.segment &&
-        candidate.gap
-      )
-        this.points.push(candidate.gap);
-      this.points.push(candidate.point);
-      this.previous = candidate;
+    if (!this.first) return;
+    // Snapshot only bucket endpoints and extrema, with exact values for every axis.
+    for (const point of [
+      this.first,
+      ...this.minimum,
+      ...this.maximum,
+      this.capture(),
+    ]) {
+      if (!point) continue;
+      this.points.set(point.index, point);
+      for (const gap of point.gaps) if (gap) this.points.set(gap.index, gap);
     }
-    this.first = this.last = this.minimum = this.maximum = undefined;
+    this.first = undefined;
+    this.minimum.fill(undefined);
+    this.maximum.fill(undefined);
   }
-  finish(): EnvelopePoint[] {
+  finish(): MotionPoint[] {
     this.flush();
-    return this.points;
+    return [...this.points.values()].sort((a, b) => a.index - b.index);
   }
 }
 export async function motionChart(
@@ -276,18 +330,30 @@ export async function motionChart(
   start: number;
   end: number;
 }> {
-  const capacity = Math.max(8, Math.min(8192, Math.round(query.width) * 2));
+  const capacity = chartPointBudget(query.width, query.detail);
   const series: Record<string, ChartPoint[]> = {};
   let start = Infinity;
   let end = -Infinity;
   const groups = new Map<string, Sensor[]>();
   for (const sensor of selected) {
     const message = sensor.message ?? Number(sensor.key.split(":")[0]);
-    const key = `${message}:${sensor.source ?? "all"}`;
+    const family = Math.floor(
+      (Number(sensor.field ?? sensor.key.split(":")[1]) - 2) / 3,
+    );
+    const key = `${message}:${family}:${sensor.source ?? "all"}`;
     const group = groups.get(key) ?? [];
     group.push(sensor);
     groups.set(key, group);
   }
+  const plans: {
+    chosen: Sensor[];
+    message: number;
+    source?: number;
+    fields: FieldInfo[];
+    ids: number[];
+    count: number;
+    family: string;
+  }[] = [];
   for (const chosen of groups.values()) {
     const message = chosen[0].message ?? Number(chosen[0].key.split(":")[0]);
     const source = chosen[0].source;
@@ -327,31 +393,33 @@ export async function motionChart(
         const samples = [
           locations.get(1)?.wire,
           ...fields.map((field) => locations.get(field.id)?.wire),
-        ].map((wire) => (wire ? Math.floor(wire.size / WIDTHS[wire.type]) : 0));
+        ].map(sampleCount);
         count += Math.max(...samples) + 1;
       }
       if (i % 1024 === 0) await job.yield();
     }
+    const family = `${message}:${Math.floor((fields[0].id - 2) / 3)}`;
+    plans.push({ chosen, message, source, fields, ids, count, family });
+  }
+  const totals = new Map<string, number>();
+  for (const plan of plans)
+    totals.set(plan.family, (totals.get(plan.family) ?? 0) + plan.count);
+  for (const { chosen, message, source, fields, ids, count, family } of plans) {
+    if (!count) {
+      chosen.forEach((sensor) => {
+        series[sensor.key] = [];
+      });
+      continue;
+    }
     const bucketCapacity = 2 * (fields.length + 1) ** 2;
-    const sharedCapacity = Math.max(capacity, bucketCapacity);
+    const share = Math.floor((capacity * count) / totals.get(family)!);
+    const sharedCapacity = Math.max(share, bucketCapacity);
     const buckets = Math.max(1, Math.floor(sharedCapacity / bucketCapacity));
     const size =
       count <= sharedCapacity ? 1 : Math.max(1, Math.ceil(count / buckets));
-    const envelopes = fields.map(() => new Envelope(size));
+    const envelope = new Envelope(size, fields.length, query.filter);
     const timeline = new Timeline();
     let excluded = false;
-    let sampleIndex = 0;
-    const gaps: (MotionPoint | undefined)[] = fields.map(() => undefined);
-    const sampleAt = (
-      time: number,
-      values: (number | null)[],
-    ): MotionSample => {
-      const point = { time, values, index: sampleIndex++ };
-      values.forEach((value, axis) => {
-        if (value === null) gaps[axis] = point;
-      });
-      return { ...point, gaps: [...gaps] };
-    };
     let index = 0;
     for (const packet of packets(
       document,
@@ -359,6 +427,7 @@ export async function motionChart(
       fields,
       query.developer,
       source,
+      query,
     )) {
       for (let sample = 0; sample < packet.times.length; sample++) {
         const time = packet.times[sample];
@@ -375,25 +444,9 @@ export async function motionChart(
         start = Math.min(start, time);
         end = Math.max(end, time);
         if (gap || excluded) {
-          const marker = sampleAt(
-            time,
-            fields.map(() => null),
-          );
-          envelopes.forEach((envelope, axis) => envelope.add(marker, axis));
+          envelope.add(time);
         }
-        const values: (number | null)[] = [];
-        for (let axis = 0; axis < fields.length; axis++) {
-          let value = packet.axes[axis][sample] ?? null;
-          if (
-            value !== null &&
-            ((query.filter?.min !== undefined && value < query.filter.min) ||
-              (query.filter?.max !== undefined && value > query.filter.max))
-          )
-            value = null;
-          values.push(value);
-        }
-        const point = sampleAt(time, values);
-        envelopes.forEach((envelope, axis) => envelope.add(point, axis));
+        envelope.add(time, packet.axes, sample);
         excluded = false;
       }
       if (++index % 64 === 0) {
@@ -403,14 +456,7 @@ export async function motionChart(
     }
     // Keep the union of every axis's extrema, with exact companion values from
     // the same source sample. Independent timestamps leave XYZ tooltips sparse.
-    const samples = new Map<number, MotionPoint>();
-    for (const envelope of envelopes)
-      for (const point of envelope.finish()) {
-        samples.set(point.sample.index, point.sample);
-        for (const gap of point.sample.gaps)
-          if (gap) samples.set(gap.index, gap);
-      }
-    const retained = [...samples.values()].sort((a, b) => a.index - b.index);
+    const retained = envelope.finish();
     chosen.forEach((sensor, axis) => {
       series[sensor.key] = retained.map((sample) => ({
         time: sample.time,

@@ -18,6 +18,32 @@ function render(summary: DocumentSummary): string {
   );
 }
 
+test("combined source files use a collapsed native accordion without losing file details", async () => {
+  const summary = (
+    await FitDocument.openSources(
+      [
+        { filename: "first.fit", bytes: activity(20) },
+        { filename: "second.fit", bytes: activity(30) },
+      ],
+      "combined",
+    )
+  ).summary();
+  const markup = render(summary);
+  assert.match(markup, /<details class="viewer-source-files"><summary>/);
+  assert.ok(!markup.includes('<details class="viewer-source-files" open'));
+  for (const text of [
+    "Source files",
+    "first.fit",
+    "second.fit",
+    "Filename",
+    "Records",
+    "Loaded",
+  ])
+    assert.ok(markup.includes(text));
+  const single = (await FitDocument.open(activity(20), "single.fit")).summary();
+  assert.ok(!render(single).includes("viewer-source-files"));
+});
+
 test("overview timestamp bounds ignore missing timestamps and non-activity messages", async () => {
   const source = join([
     file([
@@ -84,21 +110,35 @@ test("overview handles zero, missing and multi-day durations without infinite ho
   assert.ok(render(summary).includes("50:01:02"));
   assert.ok(
     render(summary).includes(
-      `50:01:02 (${(2.08).toLocaleString(undefined, { minimumFractionDigits: 2 })} days)`,
+      `<span class="viewer-duration-days">(${(2.08).toLocaleString(undefined, { minimumFractionDigits: 2 })} days)</span>`,
     ),
   );
   summary.durationSeconds = 86400;
   assert.ok(!render(summary).includes(" days)"));
 });
 
-test("overview hourly size uses the same units and two decimals as file size", async () => {
+test("multi-day duration keeps the complete parenthetical in one layout item", async () => {
+  const summary = (await FitDocument.open(activity(1), "long.fit")).summary();
+  summary.durationSeconds = 84 * 3600 + 39 * 60 + 2;
+  const markup = render(summary);
+  assert.ok(
+    markup.includes('<span class="viewer-duration-clock">84:39:02</span>'),
+  );
+  assert.ok(
+    markup.includes(
+      `<span class="viewer-duration-days">(${(3.53).toLocaleString(undefined, { minimumFractionDigits: 2 })} days)</span>`,
+    ),
+  );
+});
+
+test("overview hourly size uses the same binary units and two decimals as file size", async () => {
   const summary = (await FitDocument.open(activity(1), "hourly.fit")).summary();
   summary.durationSeconds = 3600;
   for (const [bytes, unit] of [
-    [1024, "KB"],
-    [1024 ** 2, "MB"],
-    [1024 ** 3, "GB"],
-    [1024 ** 4, "TB"],
+    [1024, "KiB"],
+    [1024 ** 2, "MiB"],
+    [1024 ** 3, "GiB"],
+    [1024 ** 4, "TiB"],
   ] as const) {
     const value = (1).toLocaleString(undefined, { minimumFractionDigits: 2 });
     assert.ok(
@@ -109,23 +149,24 @@ test("overview hourly size uses the same units and two decimals as file size", a
   }
 });
 
-test("overview formats file size with two decimals, unit thresholds and exact bytes", async () => {
+test("overview formats file size with binary units, two decimals and exact bytes", async () => {
   const summary = (await FitDocument.open(activity(1), "size.fit")).summary();
   const cases: [number, number, string][] = [
-    [0, 0, "KB"],
-    [1, 0, "KB"],
-    [512, 0.5, "KB"],
-    [1024, 1, "KB"],
-    [3600, 3.52, "KB"],
-    [1024 ** 2 - 1, 1024, "KB"],
-    [1024 ** 2, 1, "MB"],
-    [41_846_438, 39.91, "MB"],
-    [1024 ** 3 - 1, 1024, "MB"],
-    [1024 ** 3, 1, "GB"],
-    [1024 ** 4 - 1, 1024, "GB"],
-    [1024 ** 4, 1, "TB"],
-    [1.25 * 1024 ** 4, 1.25, "TB"],
-    [1024 ** 5, 1024, "TB"],
+    [0, 0, "KiB"],
+    [1, 0, "KiB"],
+    [512, 0.5, "KiB"],
+    [1024, 1, "KiB"],
+    [3600, 3.52, "KiB"],
+    [1024 ** 2 - 1, 1024, "KiB"],
+    [1024 ** 2, 1, "MiB"],
+    [41_846_438, 39.91, "MiB"],
+    [216_535_335, 206.5, "MiB"],
+    [1024 ** 3 - 1, 1024, "MiB"],
+    [1024 ** 3, 1, "GiB"],
+    [1024 ** 4 - 1, 1024, "GiB"],
+    [1024 ** 4, 1, "TiB"],
+    [1.25 * 1024 ** 4, 1.25, "TiB"],
+    [1024 ** 5, 1024, "TiB"],
   ];
   for (const [bytes, size, unit] of cases) {
     const formatted = size.toLocaleString(undefined, {
