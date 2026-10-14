@@ -162,9 +162,20 @@ body { margin: 0; overflow: hidden; }
 .viewer-header-details { display: grid; grid-template-columns: 150px minmax(0, 1fr); font-size: 13px; gap: 10px 16px; margin-top: 12px; }
 .viewer-header-details dt { color: var(--viewer-muted); }
 .viewer-ciq-settings { padding-block: 4px 20px; }
-.viewer-ciq-settings > p { margin-top: 6px; }
-.viewer-ciq-file { margin-top: 22px; border-top: 1px solid var(--viewer-border); padding-top: 16px; }
+.viewer-ciq-file + .viewer-ciq-file { margin-top: 22px; border-top: 1px solid var(--viewer-border); padding-top: 16px; }
 .viewer-ciq-file h3 { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
+.viewer-ciq-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.viewer-ciq-actions > .viewer-muted { margin-right: 8px; }
+.viewer-ciq-edit-button[aria-pressed="true"] { color: var(--viewer-accent); background: var(--viewer-accent-soft); }
+.viewer-ciq-changes { color: var(--viewer-accent); font-size: 12px; }
+.viewer-ciq-editor { min-width: 0; width: 100%; }
+.viewer-ciq-editor :is(textarea, input[type="text"]) { display: block; width: 100%; min-width: 0; padding: 5px 7px; border: 1px solid var(--viewer-border); border-radius: 4px; color: var(--viewer-foreground); background: var(--viewer-background); font: inherit; font-variant-numeric: tabular-nums; }
+.viewer-ciq-editor textarea { resize: vertical; max-height: 180px; }
+.viewer-ciq-editor :is(textarea, input):focus-visible { outline: 2px solid var(--viewer-accent); outline-offset: 1px; }
+.viewer-ciq-editor [aria-invalid="true"] { border-color: var(--viewer-warning); }
+.viewer-ciq-boolean { display: inline-flex; align-items: center; gap: 8px; }
+.viewer-ciq-boolean input { width: 14px; height: 14px; accent-color: var(--viewer-accent); }
+.viewer-ciq-error { display: block; margin-top: 4px; color: var(--viewer-warning); font-size: 12px; }
 .viewer-ciq-table-container { overflow-x: auto; margin-top: 10px; }
 .viewer-ciq-table-container > table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; text-align: left; }
 .viewer-ciq-table-container th, .viewer-ciq-table-container td { padding: 9px 12px; vertical-align: top; border-bottom: 1px solid var(--viewer-border-soft); overflow-wrap: anywhere; }

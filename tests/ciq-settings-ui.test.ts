@@ -105,6 +105,8 @@ test("successfully parsed SET files add a settings section and open it for setti
   const mixed = { ...fitSummary, ciqSettings: settingsSummary().ciqSettings };
   assert.ok(documentTabs(mixed).some((tab) => tab.id === "messages"));
   assert.ok(documentTabs(mixed).some((tab) => tab.id === "settings"));
+  const tabs = documentTabs(mixed).map((tab) => tab.id);
+  assert.equal(tabs.indexOf("settings"), tabs.indexOf("chart") + 1);
   assert.equal(initialDocumentTab(mixed), "overview");
 });
 
@@ -123,7 +125,9 @@ test("failed SET sources do not expose a settings or FIT messages section", () =
 test("CIQ settings render safe typed values and preserve exact longs and nested structures", () => {
   const files = settingsSummary().ciqSettings!;
   files[0].settings = { ...settings, entries: [...settings.entries].reverse() };
-  const markup = renderToStaticMarkup(createElement(CiqSettings, { files }));
+  const markup = renderToStaticMarkup(
+    createElement(CiqSettings, { files, download: () => {} }),
+  );
   assert.deepEqual(
     [...markup.matchAll(/class="viewer-ciq-key">(.*?)<\/span>/g)].map(
       (match) => match[1],
@@ -168,6 +172,14 @@ test("CIQ settings render safe typed values and preserve exact longs and nested 
     assert.ok(markup.includes(`>${value}</`), value);
   }
   assert.ok(markup.includes('start="0"'));
+  assert.ok(
+    !markup.includes("Connect IQ app settings from parsed .SET files."),
+  );
+  assert.ok(
+    !markup.includes('<h2 class="viewer-section-title">CIQ Settings</h2>'),
+  );
+  assert.ok(markup.includes('aria-label="Edit app.SET"'));
+  assert.ok(markup.includes('aria-label="Download app.SET"'));
 });
 
 test("CIQ settings keep each source filename and empty settings dictionaries visible", () => {
@@ -177,13 +189,41 @@ test("CIQ settings keep each source filename and empty settings dictionaries vis
     filename: "another.SET",
     settings: { type: "dictionary", entries: [] },
   });
-  const markup = renderToStaticMarkup(createElement(CiqSettings, { files }));
-  assert.ok(markup.includes("2 settings files"));
+  const markup = renderToStaticMarkup(
+    createElement(CiqSettings, { files, download: () => {} }),
+  );
+  assert.ok(!markup.includes("2 settings files"));
   assert.ok(markup.includes("app.SET"));
   assert.ok(markup.includes("another.SET"));
   assert.ok(markup.includes('aria-label="Settings in another.SET"'));
   assert.ok(markup.includes("0 properties"));
   assert.ok(markup.includes("No settings properties in this file."));
+});
+
+test("settings show string contents without adding quotes or escaping line breaks", () => {
+  const files = settingsSummary().ciqSettings!;
+  files[0].settings = {
+    type: "dictionary",
+    entries: [
+      {
+        key: { type: "string", value: "Text" },
+        value: { type: "string", value: 'plain\n"content"' },
+      },
+      {
+        key: { type: "string", value: "Empty" },
+        value: { type: "string", value: "" },
+      },
+    ],
+  };
+  const markup = renderToStaticMarkup(
+    createElement(CiqSettings, { files, download: () => {} }),
+  );
+  assert.ok(
+    markup.includes(
+      '<code class="viewer-ciq-value">plain\n&quot;content&quot;</code>',
+    ),
+  );
+  assert.ok(markup.includes('<code class="viewer-ciq-value"></code>'));
 });
 
 test("settings-only overview counts parsed files and properties without empty FIT metrics", () => {

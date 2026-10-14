@@ -1,82 +1,192 @@
-import type { DocumentSummary } from "../model";
-import type { CiqDictionary, CiqValue } from "../protocol/ciq-settings";
+import { useId, useState } from "react";
+import { Check, Download, Pencil, RotateCcw } from "lucide-react";
+import type {
+  CiqSettingsEdit,
+  CiqSettingsFile,
+  DocumentSummary,
+  ExportQuery,
+} from "../model";
+import type {
+  CiqDictionary,
+  CiqScalar,
+  CiqValue,
+} from "../protocol/ciq-settings";
+import { ciqScalarText, parseCiqInput } from "../protocol/ciq-edit";
+import { IconButton } from "./controls";
+
+interface Draft {
+  text: string;
+  edit?: CiqSettingsEdit;
+  error?: string;
+}
+interface Editor {
+  filename: string;
+  editing: boolean;
+  drafts: Map<string, Draft>;
+  change: (value: CiqScalar, path: number[], text: string) => void;
+}
 
 export function CiqSettings({
   files,
+  download,
 }: {
   files: NonNullable<DocumentSummary["ciqSettings"]>;
+  download: (query: ExportQuery) => void;
 }) {
   return (
     <section className="viewer-ciq-settings">
-      <div className="viewer-section-heading">
-        <h2 className="viewer-section-title">CIQ Settings</h2>
-        <span className="viewer-muted">
-          {files.length} settings file{files.length === 1 ? "" : "s"}
-        </span>
-      </div>
-      <p className="viewer-muted">
-        Connect IQ app settings from parsed .SET files.
-      </p>
       {files.map((file) => (
-        <section className="viewer-ciq-file" key={file.source}>
-          <div className="viewer-section-heading">
-            <h3>{file.filename}</h3>
-            <span className="viewer-muted">
-              {file.settings.entries.length.toLocaleString()} propert
-              {file.settings.entries.length === 1 ? "y" : "ies"}
-            </span>
-          </div>
-          <div className="viewer-ciq-table-container">
-            <table aria-label={`Settings in ${file.filename}`}>
-              <thead>
-                <tr>
-                  <th scope="col">Property</th>
-                  <th scope="col">Type</th>
-                  <th scope="col">Value</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedEntries(file.settings.entries).map((entry, index) => (
-                  <tr key={index}>
-                    <th scope="row">
-                      <CiqKey value={entry.key} />
-                    </th>
-                    <td className="viewer-ciq-type">{entry.value.type}</td>
-                    <td>
-                      <CiqValueDisplay value={entry.value} />
-                    </td>
-                  </tr>
-                ))}
-                {!file.settings.entries.length && (
-                  <tr>
-                    <td colSpan={3} className="viewer-muted">
-                      No settings properties in this file.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <SettingsFile key={file.source} file={file} download={download} />
       ))}
     </section>
   );
 }
 
+function SettingsFile({
+  file,
+  download,
+}: {
+  file: CiqSettingsFile;
+  download: (query: ExportQuery) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [drafts, setDrafts] = useState(new Map<string, Draft>());
+  const errors = [...drafts.values()].some((draft) => draft.error);
+  const editor: Editor = {
+    filename: file.filename,
+    editing,
+    drafts,
+    change: (original, path, text) => {
+      const key = path.join(".");
+      let draft: Draft;
+      try {
+        const value = parseCiqInput(original, text);
+        draft = { text, edit: { path, value } };
+        if (Object.is(value.value, original.value)) draft.edit = undefined;
+      } catch (error) {
+        draft = { text, error: (error as Error).message };
+      }
+      setDrafts((previous) => new Map(previous).set(key, draft));
+    },
+  };
+  const changed = [...drafts.values()].filter(
+    (draft) => draft.edit || draft.error,
+  ).length;
+  return (
+    <section className="viewer-ciq-file">
+      <div className="viewer-section-heading">
+        <h3>{file.filename}</h3>
+        <div className="viewer-ciq-actions">
+          <span className="viewer-muted">
+            {file.settings.entries.length.toLocaleString()} propert
+            {file.settings.entries.length === 1 ? "y" : "ies"}
+          </span>
+          {changed > 0 && (
+            <span className="viewer-ciq-changes">{changed} changed</span>
+          )}
+          <IconButton
+            title={`${editing ? "Finish editing" : "Edit"} ${file.filename}`}
+            tooltip={
+              editing ? "Finish editing settings" : "Edit settings values"
+            }
+            aria-pressed={editing}
+            disabled={editing && errors}
+            className="viewer-icon-button viewer-ciq-edit-button"
+            onClick={() => setEditing(!editing)}
+          >
+            {editing ? <Check size={16} /> : <Pencil size={16} />}
+          </IconButton>
+          <IconButton
+            title={`Reset changes in ${file.filename}`}
+            tooltip="Reset to the uploaded settings"
+            disabled={!changed}
+            onClick={() => setDrafts(new Map())}
+          >
+            <RotateCcw size={16} />
+          </IconButton>
+          <IconButton
+            title={`Download ${file.filename}`}
+            tooltip="Download the current settings as a SET file"
+            disabled={errors}
+            onClick={() =>
+              download({
+                format: "set",
+                settings: {
+                  source: file.source,
+                  edits: [...drafts.values()].flatMap((draft) =>
+                    draft.edit ? [draft.edit] : [],
+                  ),
+                },
+              })
+            }
+          >
+            <Download size={16} />
+          </IconButton>
+        </div>
+      </div>
+      <div className="viewer-ciq-table-container">
+        <table aria-label={`Settings in ${file.filename}`}>
+          <thead>
+            <tr>
+              <th scope="col">Property</th>
+              <th scope="col">Type</th>
+              <th scope="col">Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedEntries(file.settings.entries).map(({ entry, index }) => (
+              <tr key={index}>
+                <th scope="row">
+                  <CiqKey value={entry.key} />
+                </th>
+                <td className="viewer-ciq-type">{entry.value.type}</td>
+                <td>
+                  <CiqValueDisplay
+                    value={entry.value}
+                    editor={editor}
+                    path={[index]}
+                    label={keyLabel(entry.key, index)}
+                  />
+                </td>
+              </tr>
+            ))}
+            {!file.settings.entries.length && (
+              <tr>
+                <td colSpan={3} className="viewer-muted">
+                  No settings properties in this file.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function sortedEntries(entries: CiqDictionary["entries"]) {
-  return [...entries].sort((a, b) => {
-    if (a.key.type !== "string") return b.key.type === "string" ? 1 : 0;
-    if (b.key.type !== "string") return -1;
-    return a.key.value.localeCompare(b.key.value, undefined, {
-      sensitivity: "base",
-      numeric: true,
+  return entries
+    .map((entry, index) => ({ entry, index }))
+    .sort((a, b) => {
+      if (a.entry.key.type !== "string")
+        return b.entry.key.type === "string" ? 1 : 0;
+      if (b.entry.key.type !== "string") return -1;
+      return a.entry.key.value.localeCompare(b.entry.key.value, undefined, {
+        sensitivity: "base",
+        numeric: true,
+      });
     });
-  });
+}
+
+function keyLabel(value: CiqValue, index: number): string {
+  return value.type === "array" || value.type === "dictionary"
+    ? `Property ${index + 1}`
+    : ciqScalarText(value);
 }
 
 function CiqKey({ value }: { value: CiqValue }) {
   return value.type === "string" ? (
-    <span className="viewer-ciq-key">{value.value || '""'}</span>
+    <span className="viewer-ciq-key">{value.value}</span>
   ) : (
     <div className="viewer-ciq-typed-value">
       <span className="viewer-ciq-type">{value.type}</span>
@@ -85,7 +195,17 @@ function CiqKey({ value }: { value: CiqValue }) {
   );
 }
 
-function CiqValueDisplay({ value }: { value: CiqValue }) {
+function CiqValueDisplay({
+  value,
+  editor,
+  path = [],
+  label = "",
+}: {
+  value: CiqValue;
+  editor?: Editor;
+  path?: number[];
+  label?: string;
+}) {
   if (value.type === "array") {
     if (!value.items.length)
       return <code className="viewer-ciq-value">[]</code>;
@@ -95,7 +215,12 @@ function CiqValueDisplay({ value }: { value: CiqValue }) {
           <li key={index}>
             <div className="viewer-ciq-typed-value">
               <span className="viewer-ciq-type">{item.type}</span>
-              <CiqValueDisplay value={item} />
+              <CiqValueDisplay
+                value={item}
+                editor={editor}
+                path={[...path, index]}
+                label={`${label}[${index}]`}
+              />
             </div>
           </li>
         ))}
@@ -107,25 +232,95 @@ function CiqValueDisplay({ value }: { value: CiqValue }) {
       return <code className="viewer-ciq-value">{"{}"}</code>;
     return (
       <dl className="viewer-ciq-dictionary">
-        {sortedEntries(value.entries).map((entry, index) => (
+        {sortedEntries(value.entries).map(({ entry, index }) => (
           <div key={index}>
             <dt>
               <CiqKey value={entry.key} />
             </dt>
             <dd className="viewer-ciq-typed-value">
               <span className="viewer-ciq-type">{entry.value.type}</span>
-              <CiqValueDisplay value={entry.value} />
+              <CiqValueDisplay
+                value={entry.value}
+                editor={editor}
+                path={[...path, index]}
+                label={`${label}.${keyLabel(entry.key, index)}`}
+              />
             </dd>
           </div>
         ))}
       </dl>
     );
   }
+  if (editor?.editing && value.type !== "null")
+    return (
+      <ValueEditor original={value} editor={editor} path={path} label={label} />
+    );
+  const current = editor?.drafts.get(path.join("."))?.edit?.value ?? value;
+  return <code className="viewer-ciq-value">{ciqScalarText(current)}</code>;
+}
+
+function ValueEditor({
+  original,
+  editor,
+  path,
+  label,
+}: {
+  original: CiqScalar;
+  editor: Editor;
+  path: number[];
+  label: string;
+}) {
+  const id = useId();
+  const draft = editor.drafts.get(path.join("."));
+  const text = draft?.text ?? ciqScalarText(original);
+  const name = `Value for ${label} in ${editor.filename}`;
   return (
-    <code className="viewer-ciq-value">
-      {value.type === "string"
-        ? JSON.stringify(value.value)
-        : String(value.value)}
-    </code>
+    <div className="viewer-ciq-editor">
+      {original.type === "boolean" ? (
+        <label className="viewer-ciq-boolean">
+          <input
+            type="checkbox"
+            aria-label={name}
+            checked={text === "true"}
+            onChange={(event) =>
+              editor.change(original, path, String(event.target.checked))
+            }
+          />
+          <span>{text}</span>
+        </label>
+      ) : original.type === "string" ? (
+        <textarea
+          rows={Math.min(4, Math.max(1, text.split("\n").length))}
+          aria-label={name}
+          aria-invalid={Boolean(draft?.error)}
+          aria-describedby={draft?.error ? id : undefined}
+          value={text}
+          onChange={(event) =>
+            editor.change(original, path, event.target.value)
+          }
+        />
+      ) : (
+        <input
+          type="text"
+          inputMode={
+            original.type === "integer" || original.type === "long"
+              ? "numeric"
+              : "decimal"
+          }
+          aria-label={name}
+          aria-invalid={Boolean(draft?.error)}
+          aria-describedby={draft?.error ? id : undefined}
+          value={text}
+          onChange={(event) =>
+            editor.change(original, path, event.target.value)
+          }
+        />
+      )}
+      {draft?.error && (
+        <span id={id} className="viewer-ciq-error">
+          {draft.error}
+        </span>
+      )}
+    </div>
   );
 }

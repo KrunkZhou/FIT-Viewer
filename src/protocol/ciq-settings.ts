@@ -2,7 +2,7 @@ import type { Job } from "../model";
 import { idleJob } from "./reader";
 
 export const MAX_CIQ_SETTINGS_BYTES = 1024 * 1024;
-const MAX_DEPTH = 64;
+export const MAX_CIQ_SETTINGS_DEPTH = 64;
 const STRING_BLOCK_MAGIC = 0xabcdabcd;
 const DATA_BLOCK_MAGIC = 0xda7ada7a;
 
@@ -143,7 +143,8 @@ export async function readCiqSettings(
       }
       case 5:
       case 11: {
-        if (depth > MAX_DEPTH) invalid("Settings nesting exceeds 64 levels.");
+        if (depth > MAX_CIQ_SETTINGS_DEPTH)
+          invalid("Settings nesting exceeds 64 levels.");
         const count = int32();
         const children = count * (type === 11 ? 2 : 1);
         if (count < 0 || children > end - offset - remainingValues)

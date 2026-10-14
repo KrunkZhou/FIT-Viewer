@@ -1,4 +1,4 @@
-import type { CiqDictionary } from "./protocol/ciq-settings";
+import type { CiqDictionary, CiqScalar } from "./protocol/ciq-settings";
 
 export type Scalar = number | bigint | string | null;
 export type RawValue = Scalar | Scalar[];
@@ -102,6 +102,10 @@ export interface CiqSettingsFile {
   source: number;
   filename: string;
   settings: CiqDictionary;
+}
+export interface CiqSettingsEdit {
+  path: number[];
+  value: CiqScalar;
 }
 export interface SourceInfo {
   id: number;
@@ -221,7 +225,8 @@ export interface MapPlaybackPosition extends Position {
   time: number;
 }
 export interface ExportQuery {
-  format: "csv" | "gpx" | "geojson" | "hrv" | "json" | "fit";
+  format: "csv" | "gpx" | "geojson" | "hrv" | "json" | "fit" | "set";
+  settings?: { source: number; edits: CiqSettingsEdit[] };
   message?: number;
   developer?: boolean;
   timeFormat?: "iso" | "localized";

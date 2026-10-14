@@ -65,6 +65,12 @@ export function documentTabs(summary?: DocumentSummary) {
     ...(summary?.subfiles.length
       ? [{ id: "messages" as const, title: "Messages", icon: ClipboardList }]
       : []),
+    ...(summary?.hasMap
+      ? [{ id: "map" as const, title: "Map", icon: Map }]
+      : []),
+    ...(summary?.hasCharts
+      ? [{ id: "chart" as const, title: "Chart", icon: Activity }]
+      : []),
     ...(summary?.ciqSettings?.length
       ? [
           {
@@ -73,12 +79,6 @@ export function documentTabs(summary?: DocumentSummary) {
             icon: SlidersHorizontal,
           },
         ]
-      : []),
-    ...(summary?.hasMap
-      ? [{ id: "map" as const, title: "Map", icon: Map }]
-      : []),
-    ...(summary?.hasCharts
-      ? [{ id: "chart" as const, title: "Chart", icon: Activity }]
       : []),
     ...(summary?.diagnosticCount
       ? [
@@ -337,7 +337,7 @@ export default function App() {
       )}
       {summary.ciqSettings?.length && visited.includes("settings") ? (
         <div className="section-view" hidden={tab !== "settings"}>
-          <CiqSettings files={summary.ciqSettings} />
+          <CiqSettings files={summary.ciqSettings} download={download} />
         </div>
       ) : null}
       {summary.hasMap && visited.includes("map") && (

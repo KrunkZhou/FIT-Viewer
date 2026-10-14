@@ -14,6 +14,7 @@ import type {
 import JSZip from "jszip";
 import { activity } from "./fixtures";
 import { syntheticSettings } from "./ciq-fixtures";
+import { readCiqSettings } from "../src/protocol/ciq-settings";
 function worker() {
   return new Worker(new URL("./worker-adapter.mjs", import.meta.url), {
     execArgv: [],
@@ -37,9 +38,14 @@ function wait(
     const cleanup = () => {
       clearTimeout(timeout);
       worker.off("message", listen);
+      worker.off("error", fail);
+    };
+    const fail = (error: Error) => {
+      cleanup();
+      reject(error);
     };
     worker.on("message", listen);
-    worker.once("error", reject);
+    worker.once("error", fail);
   });
 }
 test("map timeline queries use source samples and reject stale map indexes after filtering or replacement", async () => {
@@ -370,6 +376,33 @@ test("CIQ worker keeps settings isolated across source selection and replacement
     assert.equal(selectedFit.hasMap, true);
     const combined = (await request({ kind: "summary" })) as DocumentSummary;
     assert.equal(combined.ciqSettings?.length, 1);
+    const download = (await request({
+      kind: "export",
+      query: {
+        format: "set",
+        settings: {
+          source: 0,
+          edits: [{ path: [0], value: { type: "string", value: "72000000" } }],
+        },
+      },
+    })) as ExportResult;
+    assert.equal(download.filename, "example.SET");
+    const saved = await readCiqSettings(
+      new Uint8Array(await download.blob.arrayBuffer()),
+    );
+    assert.deepEqual(saved.entries[0].value, {
+      type: "string",
+      value: "72000000",
+    });
+    const sourceDownload = (await request({
+      kind: "export",
+      source: 0,
+      query: { format: "set", settings: { source: 0, edits: [] } },
+    })) as ExportResult;
+    assert.deepEqual(
+      new Uint8Array(await sourceDownload.blob.arrayBuffer()),
+      syntheticSettings(),
+    );
     const replaced = (await request({
       kind: "open",
       file: fit,

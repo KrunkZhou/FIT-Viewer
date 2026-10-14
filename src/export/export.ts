@@ -7,6 +7,9 @@ import { repair } from "../repair/repair";
 import { exportGeoJson } from "./geojson";
 import { repairArchive } from "./archive";
 import { hasTimeRange, inTimeRange } from "../document/time-range";
+import { applyCiqEdits } from "../protocol/ciq-edit";
+import { readCiqSettings } from "../protocol/ciq-settings";
+import { writeCiqSettings } from "../protocol/ciq-write";
 
 export const escapeCsv = (value: string): string =>
   /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
@@ -44,6 +47,28 @@ export async function exportDocument(
   query: ExportQuery,
   job = idleJob(),
 ): Promise<ExportResult> {
+  if (query.format === "set") {
+    const settings = query.settings;
+    const file = document.ciqSettings.find(
+      (file) => file.source === settings?.source,
+    );
+    if (!settings || !file)
+      throw new Error("The settings file is unavailable.");
+    const source = document.sources[file.source];
+    const bytes = settings.edits.length
+      ? await writeCiqSettings(
+          applyCiqEdits(file.settings, settings.edits),
+          job,
+        )
+      : document.index.bytes.subarray(source.start, source.end);
+    await readCiqSettings(bytes, job);
+    return {
+      blob: new Blob([bytes as Uint8Array<ArrayBuffer>], {
+        type: "application/octet-stream",
+      }),
+      filename: file.filename.split(/[\\/]/).pop()!,
+    };
+  }
   if (query.format === "geojson")
     return exportGeoJson(document, job, query.dates);
   const base = document.filename.replace(/\.[^.]+$/, "");
