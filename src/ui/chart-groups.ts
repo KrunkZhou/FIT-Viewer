@@ -1,8 +1,35 @@
-import type { Sensor } from "../model";
+import type { ChartPoint, Sensor } from "../model";
 
 export interface ChartGroup {
   sensor: Sensor;
   members: Sensor[];
+}
+
+export interface ChartTrace {
+  sensor: Sensor;
+  points: ChartPoint[];
+  color: string;
+}
+
+export function chartLines(traces: ChartTrace[]) {
+  const byKey = new Map(traces.map((trace) => [trace.sensor.key, trace]));
+  return groupSensors(traces.map((trace) => trace.sensor)).map((group) => {
+    const members = group.members.map((sensor) => byKey.get(sensor.key)!);
+    return {
+      sensor: group.sensor,
+      color: members[0].color,
+      points: members
+        .flatMap((trace) =>
+          trace.points
+            .filter((point) => point.value !== null)
+            .map((point) => ({
+              ...point,
+              sourceName: trace.sensor.sourceName,
+            })),
+        )
+        .sort((a, b) => a.time - b.time),
+    };
+  });
 }
 
 export function motionAxis(sensor: Sensor): "X" | "Y" | "Z" | undefined {
@@ -94,6 +121,7 @@ export function groupSensors(sensors: Sensor[]): ChartGroup[] {
             : base,
           name,
           source: undefined,
+          sourceName: undefined,
         },
         members: [],
       };

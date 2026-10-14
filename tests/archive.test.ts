@@ -92,7 +92,6 @@ test("combined ZIP documents preserve source offsets, table values and separate 
     createElement(Overview, {
       summary: document.summary(),
       diagnostics() {},
-      download() {},
     }),
   );
   assert.ok(markup.includes("Source files"));
@@ -245,6 +244,11 @@ test("ZIP charts separate sources and exclude traces with fewer than ten points"
   const heartRate = groups.find((group) => group.sensor.key === "20:3")!;
   assert.equal(heartRate.sensor.name, "Heart Rate");
   assert.equal(heartRate.members.length, 2);
+  assert.deepEqual(
+    heartRate.members.map((sensor) => sensor.sourceName),
+    ["A.fit", "B.fit"],
+  );
+  assert.equal(heartRate.sensor.sourceName, undefined);
   assert.deepEqual(chartMemberKeys(groups, ["20:3"]), [
     "20:3:file:0",
     "20:3:file:1",

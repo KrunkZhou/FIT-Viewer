@@ -12,6 +12,7 @@ import {
 import { loadFile } from "../src/document/files";
 import { createJob } from "../src/document/jobs";
 import { activity, file, type Field } from "./fixtures";
+import { FIT_EPOCH } from "../src/protocol/time";
 
 test("CSV escaping covers commas, quotes, CR/LF, arrays, and exact large integers", async () => {
   const bytes = file(
@@ -59,6 +60,32 @@ test("ISO and localized timestamp exports use explicit timezone", async () => {
   ).blob.text();
   assert.match(iso, /T\d\d:\d\d:\d\d\.000Z/);
   assert.ok(!local.includes(".000Z"));
+  assert.doesNotMatch(local, /\b(?:AM|PM)\b/);
+});
+
+test("localized CSV timestamps use 24-hour time at midnight and in the evening", async () => {
+  const document = await FitDocument.open(
+    file(
+      ["2026-10-05T00:00:00Z", "2026-10-05T21:53:06Z"].map((time) => ({
+        message: 20,
+        fields: [[253, 6, (Date.parse(time) - FIT_EPOCH) / 1000]] as Field[],
+      })),
+      false,
+    ),
+    "24h.fit",
+  );
+  const csv = await (
+    await exportDocument(document, {
+      format: "csv",
+      message: 20,
+      timeFormat: "localized",
+      locale: "en-US",
+      timezone: "UTC",
+    })
+  ).blob.text();
+  assert.match(csv, /00:00:00/);
+  assert.match(csv, /21:53:06/);
+  assert.doesNotMatch(csv, /\b(?:AM|PM)\b/);
 });
 test("CSV export reports progress and cancellation discards partial output", async () => {
   const document = await FitDocument.open(activity(5000), "cancel.fit");

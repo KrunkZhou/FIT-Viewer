@@ -1,10 +1,13 @@
-import { app, dialog, shell, type BrowserWindow } from "electron";
+import { app, shell, type BrowserWindow } from "electron";
+import type { DesktopPromptHost } from "./prompts";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   DEFAULT_APPS_URL,
+  associationRegistration,
+  completeAssociationPrompt,
   shouldPromptForAssociation,
 } from "./association-policy";
 
@@ -25,7 +28,10 @@ async function registryValue(
   }
 }
 
-export async function askFileAssociation(window: BrowserWindow): Promise<void> {
+export async function askFileAssociation(
+  window: BrowserWindow,
+  notifications: DesktopPromptHost,
+): Promise<void> {
   if (
     process.platform !== "win32" ||
     !app.isPackaged ||
@@ -40,6 +46,7 @@ export async function askFileAssociation(window: BrowserWindow): Promise<void> {
   } catch {
     /* First launch. */
   }
+  if (dismissed) return;
   const installedExecutable = await registryValue(
     "HKCU\\Software\\FITViewer",
     "Executable",
@@ -61,22 +68,35 @@ export async function askFileAssociation(window: BrowserWindow): Promise<void> {
     window.isDestroyed()
   )
     return;
-  const { response } = await dialog.showMessageBox(window, {
-    type: "question",
-    title: "Open FIT files with FIT Viewer",
-    message: "Use FIT Viewer to open .fit files?",
-    detail:
-      "Choose FIT Viewer for .fit files in Windows Settings. Your current default will not change until you confirm it there.",
-    buttons: ["Choose default app", "Not now", "Don't ask again"],
-    defaultId: 1,
-    cancelId: 1,
-    noLink: true,
+  const accepted = await notifications.show({ kind: "association" });
+  // Closing the application is not an answer to the preference prompt.
+  if (accepted === undefined) return;
+  await completeAssociationPrompt(accepted ? 0 : 1, {
+    dismiss: () =>
+      writeFile(
+        preferencePath,
+        JSON.stringify({ dismissed: true }) + "\n",
+        "utf8",
+      ),
+    register: async () => {
+      for (const [key, name, value] of associationRegistration(
+        process.execPath,
+      ))
+        await run(
+          join(process.env.SystemRoot || "C:\\Windows", "System32", "reg.exe"),
+          [
+            "add",
+            key,
+            ...(name ? ["/v", name] : ["/ve"]),
+            "/t",
+            "REG_SZ",
+            "/d",
+            value,
+            "/f",
+          ],
+          { windowsHide: true, timeout: 3000 },
+        );
+    },
+    openSettings: () => shell.openExternal(DEFAULT_APPS_URL),
   });
-  if (response === 0) await shell.openExternal(DEFAULT_APPS_URL);
-  if (response === 0 || response === 2)
-    await writeFile(
-      preferencePath,
-      JSON.stringify({ dismissed: true }) + "\n",
-      "utf8",
-    );
 }

@@ -18,3 +18,19 @@ pnpm run dev
 ```
 
 Open at `http://127.0.0.1:5173/`.
+
+## Open desktop files from another app
+
+Windows (PowerShell):
+
+```powershell
+& "C:\Apps\FIT Viewer\FIT Viewer.exe" "C:\Activities\activity.fit"
+& "C:\Apps\FIT Viewer\FIT Viewer.exe" "C:\Activities\activities"
+```
+
+macOS:
+
+```sh
+open -na "FIT Viewer" --args "/Users/me/Activities/activity.fit"
+open -na "FIT Viewer" --args "/Users/me/Activities/activities"
+```

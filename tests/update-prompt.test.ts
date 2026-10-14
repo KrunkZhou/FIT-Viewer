@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  UpdatePrompter,
-  updatePromptOptions,
-  type UpdateOffer,
-} from "../electron/update-prompt";
+import { UpdatePrompter, type UpdateOffer } from "../electron/update-prompt";
+import { desktopPromptText } from "../src/desktop-prompts";
 import {
   UpdateController,
   type UpdateBackend,
@@ -73,18 +70,16 @@ function harness(initial: UpdateState = ready) {
 }
 
 test("update popups show the version and safe platform-specific actions", () => {
-  const install = updatePromptOptions({ kind: "install", version: "1.2.3" });
-  assert.match(install.message, /1\.2\.3 is ready to install/);
+  const install = desktopPromptText({ kind: "install", version: "1.2.3" });
+  assert.match(install.title, /1\.2\.3 is ready to install/);
   assert.match(install.detail!, /Open files.*will be closed/);
-  assert.deepEqual(install.buttons, ["Restart to update", "Later"]);
-  const download = updatePromptOptions({ kind: "download", version: "1.2.4" });
-  assert.match(download.message, /1\.2\.4 is available/);
+  assert.equal(install.action, "Restart to update");
+  const download = desktopPromptText({ kind: "download", version: "1.2.4" });
+  assert.match(download.title, /1\.2\.4 is available/);
   assert.match(download.detail!, /install it manually/);
-  assert.deepEqual(download.buttons, ["Download update", "Later"]);
+  assert.equal(download.action, "Download update");
   for (const options of [install, download]) {
-    assert.equal(options.defaultId, 1);
-    assert.equal(options.cancelId, 1);
-    assert.equal(options.noLink, true);
+    assert.equal(options.dismiss, "Later");
   }
 });
 

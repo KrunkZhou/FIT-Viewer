@@ -20,6 +20,7 @@ import { type FitIndex, idleJob, readFit } from "../protocol/reader";
 import { expandComponents } from "./components";
 import { positionCoordinates, positionFields } from "./positions";
 import { readWorkspace } from "./workspace";
+import { FIT_EPOCH, localDateKey } from "../protocol/time";
 import type { SourceInput } from "./files";
 import hrUtility from "@garmin/fitsdk/src/utils-hr-mesg.js";
 
@@ -38,6 +39,7 @@ export class FitDocument {
   private startTimestamp?: number;
   private endTimestamp?: number;
   private sports = new Set<string>();
+  private availableDates = new Set<string>();
   private constructor(
     readonly index: FitIndex,
     readonly filename: string,
@@ -107,6 +109,7 @@ export class FitDocument {
       gpsPoints: this.gpsPoints,
       startTimestamp: this.startTimestamp,
       endTimestamp: this.endTimestamp,
+      availableDates: [...this.availableDates].sort(),
       durationSeconds: this.sources.reduce<number | undefined>(
         (total, source) => {
           if (
@@ -412,13 +415,30 @@ export class FitDocument {
     return { entries };
   }
   private async buildDerived(job: Job): Promise<void> {
+    let dayStart = Infinity;
+    let dayEnd = -Infinity;
+    const addDate = (time: number | undefined) => {
+      if (time === undefined || !Number.isFinite(time)) return;
+      const ms = FIT_EPOCH + time * 1000;
+      if (ms >= dayStart && ms < dayEnd) return;
+      const day = new Date(ms);
+      if (!Number.isFinite(day.getTime())) return;
+      this.availableDates.add(localDateKey(time));
+      day.setHours(0, 0, 0, 0);
+      dayStart = day.getTime();
+      day.setDate(day.getDate() + 1);
+      dayEnd = day.getTime();
+    };
     const positions = new Map<
       Definition,
       { latitude: WireField; longitude: WireField }
     >();
+    const positionTimes = new Map<number, number>();
     for (const definition of this.index.definitions) {
       const fields = positionFields(definition.message);
       if (!fields) continue;
+      if (fields.timestamp !== undefined)
+        positionTimes.set(definition.message, fields.timestamp);
       const latitude = definition.fields.find(
         (field) =>
           field.developer === undefined && field.id === fields.latitude,
@@ -446,6 +466,25 @@ export class FitDocument {
     for (let id = 0; id < this.index.records.length; id++) {
       const record = this.index.records[id];
       const raw = this.raw(id);
+      addDate(record.timestamp);
+      if (
+        record.timestamp !== undefined &&
+        (record.definition.message === 164 || record.definition.message === 165)
+      ) {
+        const ms = raw["0"];
+        const offsets = raw["1"];
+        if (typeof ms === "number" && valid(ms, 4)) {
+          for (const offset of Array.isArray(offsets) ? offsets : [offsets]) {
+            if (typeof offset === "number" && valid(offset, 4))
+              addDate(record.timestamp + (ms + offset) / 1000);
+          }
+        }
+      }
+      const positionTimestamp = positionTimes.get(record.definition.message);
+      if (record.timestamp === undefined && positionTimestamp !== undefined) {
+        const time = raw[String(positionTimestamp)];
+        if (typeof time === "number" && valid(time, 6)) addDate(time);
+      }
       if (this.sources.length > 1) {
         const source = this.index.subfiles[record.subfile].source!;
         const messages =

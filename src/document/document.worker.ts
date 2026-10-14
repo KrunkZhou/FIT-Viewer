@@ -96,7 +96,7 @@ scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         result = await chart(current!, request.query, job);
         break;
       case "map":
-        result = await mapData(current!, job);
+        result = await mapData(current!, job, false, request.dates);
         break;
       case "diagnostics": {
         const size = Math.min(100, Math.max(1, Math.trunc(request.size) || 50));

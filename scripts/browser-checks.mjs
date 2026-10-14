@@ -331,7 +331,8 @@ export async function validateOverview(tab, viewport, directory) {
       assert.equal(actual.tooltip.describedBy, "developer-mode-help");
       assert.ok(actual.tooltip.description.includes("raw recorded values"));
       assert.ok(
-        actual.tooltip.description.includes("Does not modify the FIT file"),
+        actual.tooltip.description.includes("undocumented message types") &&
+          !actual.tooltip.description.includes("Does not modify the FIT file"),
       );
       assert.ok(actual.tooltip.left >= 0 && actual.tooltip.right <= size.width);
       assert.ok(actual.tooltip.bottom <= size.height);

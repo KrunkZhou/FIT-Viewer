@@ -1,8 +1,5 @@
 import type { MapPoint, Position } from "../model";
-import { FIT_EPOCH } from "../protocol/time";
-
-const timeLabel = (time: number) =>
-  new Date(FIT_EPOCH + time * 1000).toLocaleString();
+import { formatTimestamp } from "../protocol/time";
 
 export function pointDetails(
   point: MapPoint,
@@ -13,7 +10,9 @@ export function pointDetails(
     name,
     route,
     `${point.lat.toFixed(7)}, ${point.lon.toFixed(7)}`,
-    point.time === undefined ? undefined : `Time: ${timeLabel(point.time)}`,
+    point.time === undefined
+      ? undefined
+      : `Time: ${formatTimestamp(point.time)}`,
     point.distance === undefined
       ? undefined
       : `Distance: ${(point.distance / 1000).toFixed(2)} km`,
@@ -35,8 +34,10 @@ export function routeDetails(track: Position[], name: string): string {
   return [
     name,
     `${track.length.toLocaleString()} displayed GPS points`,
-    start?.time === undefined ? undefined : `Start: ${timeLabel(start.time)}`,
-    end?.time === undefined ? undefined : `End: ${timeLabel(end.time)}`,
+    start?.time === undefined
+      ? undefined
+      : `Start: ${formatTimestamp(start.time)}`,
+    end?.time === undefined ? undefined : `End: ${formatTimestamp(end.time)}`,
     distance === undefined || distance < 0
       ? undefined
       : `Distance: ${(distance / 1000).toFixed(2)} km`,

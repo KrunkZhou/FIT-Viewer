@@ -6,7 +6,9 @@ import type {
   MapData,
   Position,
   Sensor,
+  TimeRange,
 } from "../model";
+import { hasTimeRange, inTimeRange, intersectTimeRanges } from "./time-range";
 import { FitDocument } from "./document";
 import { idleJob } from "../protocol/reader";
 import {
@@ -53,6 +55,10 @@ export function sensors(document: FitDocument, developer: boolean): Sensor[] {
           message: message.id,
           field: field.key,
           source,
+          sourceName:
+            source === undefined
+              ? undefined
+              : document.sources[source].filename,
         });
       }
     }
@@ -266,13 +272,23 @@ export async function chart(
   let end = -Infinity;
   const motion = selected.filter(isMotionSensor);
   if (motion.length && !full) {
-    const data = await motionChart(document, motion, query, job);
+    const data = await motionChart(
+      document,
+      motion,
+      { ...query, ...intersectTimeRanges(query, query.dates) },
+      job,
+    );
     Object.assign(series, data.series);
     start = data.start;
     end = data.end;
   }
   for (const sensor of selected.filter((s) => full || !isMotionSensor(s))) {
     const points: ChartPoint[] = [];
+    let excluded = false;
+    if (sensor.axis === "sample" && hasTimeRange(query.dates)) {
+      series[sensor.key] = points;
+      continue;
+    }
     for await (const point of chartPoints(
       document,
       sensor,
@@ -281,10 +297,15 @@ export async function chart(
     )) {
       const { time } = point;
       if (
+        !inTimeRange(time, query.dates) ||
         (query.start !== undefined && time < query.start) ||
         (query.end !== undefined && time > query.end)
-      )
+      ) {
+        excluded = true;
         continue;
+      }
+      if (excluded && points.length) points.push({ time, value: null });
+      excluded = false;
       let numeric = point.value;
       if (
         numeric !== null &&
@@ -357,6 +378,7 @@ async function simplify(
 export async function* mapPositions(
   document: FitDocument,
   job: Job,
+  dates?: TimeRange,
 ): AsyncGenerator<{
   message: number;
   subfile: number;
@@ -399,16 +421,21 @@ export async function* mapPositions(
       info.timestamp === undefined
         ? undefined
         : cells[String(info.timestamp)]?.raw;
+    const time =
+      record.timestamp ??
+      (typeof timestamp === "number" && Number.isFinite(timestamp)
+        ? timestamp
+        : undefined);
+    if (!inTimeRange(time, dates)) {
+      yield { message: record.definition.message, subfile: record.subfile };
+      continue;
+    }
     yield {
       message: record.definition.message,
       subfile: record.subfile,
       point: {
         ...coordinates,
-        time:
-          record.timestamp ??
-          (typeof timestamp === "number" && Number.isFinite(timestamp)
-            ? timestamp
-            : undefined),
+        time,
         record: id,
         ...(typeof elevation === "number" ? { elevation } : {}),
         ...(typeof distance === "number" ? { distance } : {}),
@@ -422,6 +449,7 @@ export async function mapData(
   document: FitDocument,
   job = idleJob(),
   full = false,
+  dates?: TimeRange,
 ): Promise<MapData> {
   const data: MapData = { tracks: [], points: [] };
   let track: Position[] = [];
@@ -442,6 +470,7 @@ export async function mapData(
   for await (const { message, subfile: file, point } of mapPositions(
     document,
     job,
+    dates,
   )) {
     if (!point) {
       if (message === 20) await finish();

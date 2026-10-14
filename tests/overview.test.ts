@@ -14,7 +14,6 @@ function render(summary: DocumentSummary): string {
     createElement(Overview, {
       summary,
       diagnostics: () => {},
-      download: () => {},
     }),
   );
 }
@@ -83,6 +82,63 @@ test("overview handles zero, missing and multi-day durations without infinite ho
   summary.endTimestamp = summary.startTimestamp! + 50 * 3600 + 62;
   summary.durationSeconds = 50 * 3600 + 62;
   assert.ok(render(summary).includes("50:01:02"));
+  assert.ok(
+    render(summary).includes(
+      `50:01:02 (${(2.08).toLocaleString(undefined, { minimumFractionDigits: 2 })} days)`,
+    ),
+  );
+  summary.durationSeconds = 86400;
+  assert.ok(!render(summary).includes(" days)"));
+});
+
+test("overview hourly size uses the same units and two decimals as file size", async () => {
+  const summary = (await FitDocument.open(activity(1), "hourly.fit")).summary();
+  summary.durationSeconds = 3600;
+  for (const [bytes, unit] of [
+    [1024, "KB"],
+    [1024 ** 2, "MB"],
+    [1024 ** 3, "GB"],
+    [1024 ** 4, "TB"],
+  ] as const) {
+    const value = (1).toLocaleString(undefined, { minimumFractionDigits: 2 });
+    assert.ok(
+      render({ ...summary, bytes }).includes(
+        `<dt>Size per hour</dt><dd>${value} ${unit}/hour (${bytes.toLocaleString()} bytes/hour)</dd>`,
+      ),
+    );
+  }
+});
+
+test("overview formats file size with two decimals, unit thresholds and exact bytes", async () => {
+  const summary = (await FitDocument.open(activity(1), "size.fit")).summary();
+  const cases: [number, number, string][] = [
+    [0, 0, "KB"],
+    [1, 0, "KB"],
+    [512, 0.5, "KB"],
+    [1024, 1, "KB"],
+    [3600, 3.52, "KB"],
+    [1024 ** 2 - 1, 1024, "KB"],
+    [1024 ** 2, 1, "MB"],
+    [41_846_438, 39.91, "MB"],
+    [1024 ** 3 - 1, 1024, "MB"],
+    [1024 ** 3, 1, "GB"],
+    [1024 ** 4 - 1, 1024, "GB"],
+    [1024 ** 4, 1, "TB"],
+    [1.25 * 1024 ** 4, 1.25, "TB"],
+    [1024 ** 5, 1024, "TB"],
+  ];
+  for (const [bytes, size, unit] of cases) {
+    const formatted = size.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    assert.ok(
+      render({ ...summary, bytes }).includes(
+        `<dt>File size</dt><dd>${formatted} ${unit} (${bytes.toLocaleString()} bytes)</dd>`,
+      ),
+      `File size for ${bytes} bytes`,
+    );
+  }
 });
 
 test("overview retains the issue banner and switches expose their description", async () => {
@@ -103,7 +159,7 @@ test("overview retains the issue banner and switches expose their description", 
   assert.ok(markup.includes('aria-describedby="developer-mode-help"'));
 });
 
-test("overview hides GPS exports without usable positions and restores them for GPS files", async () => {
+test("overview never shows GPS export buttons, including files with GPS positions", async () => {
   for (const fields of [
     [[3, 2, 120]],
     [
@@ -122,8 +178,8 @@ test("overview hides GPS exports without usable positions and restores them for 
       )
     ).summary();
     const markup = render(summary);
-    assert.equal(markup.includes("Download GeoJSON"), summary.hasMap);
+    assert.equal(markup.includes("Download GeoJSON"), false);
     assert.equal(markup.includes("QGIS"), false);
-    assert.equal(markup.includes("Export GPX"), summary.hasMap);
+    assert.equal(markup.includes("Export GPX"), false);
   }
 });

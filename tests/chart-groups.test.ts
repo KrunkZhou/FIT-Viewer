@@ -10,6 +10,7 @@ import type { Sensor } from "../src/model";
 import Charts from "../src/ui/Charts";
 import {
   chartMemberKeys,
+  chartLines,
   groupMotionAxes,
   groupSensors,
   motionAxis,
@@ -127,6 +128,54 @@ test("axis selection and per-file identities survive combining and separating ch
   assert.deepEqual(chartMemberKeys(groups, selected), before);
 });
 
+test("chart lines connect matching readings across file and time gaps in chronological order", () => {
+  const [x1, y1] = axes(165, 5, 0);
+  const [x2, y2] = axes(165, 5, 1);
+  const inputs = [
+    {
+      sensor: { ...x1, sourceName: "late.fit" },
+      color: "red",
+      points: [
+        { time: 30, value: 3 },
+        { time: 20, value: null },
+        { time: 10, value: 1 },
+      ],
+    },
+    {
+      sensor: { ...x2, sourceName: "early.fit" },
+      color: "red",
+      points: [
+        { time: 5, value: 0 },
+        { time: 25, value: 2 },
+      ],
+    },
+    { sensor: y1, color: "green", points: [{ time: 10, value: 100 }] },
+    { sensor: y2, color: "green", points: [{ time: 30, value: 200 }] },
+  ];
+  const original = structuredClone(inputs);
+  const lines = chartLines(inputs);
+  assert.equal(lines.length, 2);
+  assert.deepEqual(
+    lines[0].points.map((point) => [point.time, point.value, point.sourceName]),
+    [
+      [5, 0, "early.fit"],
+      [10, 1, "late.fit"],
+      [25, 2, "early.fit"],
+      [30, 3, "late.fit"],
+    ],
+  );
+  assert.deepEqual(
+    lines[1].points.map((point) => point.value),
+    [100, 200],
+  );
+  assert.deepEqual(inputs, original);
+  assert.equal(
+    chartLines([{ ...inputs[0], points: [{ time: 1, value: null }] }])[0].points
+      .length,
+    0,
+  );
+});
+
 test("XYZ worker queries retain peaks and gaps under a shared display budget; exports stay full resolution", async () => {
   const count = 100;
   const original = file(
@@ -184,18 +233,101 @@ test("XYZ worker queries retain peaks and gaps under a shared display budget; ex
       data.series[`165:${field}`].some((point) => point.value === null),
     );
   }
+  assert.deepEqual(
+    data.series["165:5"].map((point) => point.time),
+    data.series["165:6"].map((point) => point.time),
+  );
+  assert.deepEqual(
+    data.series["165:5"].map((point) => point.time),
+    data.series["165:7"].map((point) => point.time),
+  );
   const json = JSON.parse(
     await (
       await exportDocument(document, { format: "json", sensors: keys })
     ).blob.text(),
   );
   for (const key of keys) assert.equal(json.series[key].length, count * 25);
+  for (const key of keys) {
+    const original = new Map<number, number>(
+      json.series[key].map((point: { time: number; value: number }) => [
+        point.time,
+        point.value,
+      ]),
+    );
+    for (const point of data.series[key])
+      if (point.value !== null)
+        assert.equal(point.value, original.get(point.time));
+  }
   assert.deepEqual(Object.keys(json.series), keys);
+});
+
+test("XYZ downsampling retains distinct axis peaks with exact companion values and genuine missing slots", async () => {
+  const document = await FitDocument.open(
+    file(
+      Array.from({ length: 200 }, (_, packet) => ({
+        message: 165,
+        fields: [
+          [253, 6, 100 + packet],
+          [0, 4, 0],
+          [1, 4, Array.from({ length: 10 }, (_, sample) => sample * 10)],
+          ...[5, 6, 7].map(
+            (field) =>
+              [
+                field,
+                8,
+                Array.from({ length: 10 }, (_, sample) => {
+                  const index = packet * 10 + sample;
+                  if (field === 5 && index === 77) return 10000;
+                  if (field === 6 && index === 525) return -20000;
+                  if (field === 7 && index === 1210) return 30000;
+                  if (field === 5 && index === 1065) return -40000;
+                  if (field === 6 && index === 1065) return NaN;
+                  return index % (field + 10);
+                }),
+              ] as Field,
+          ),
+        ] as Field[],
+      })),
+      false,
+    ),
+    "distinct-peaks.fit",
+  );
+  const keys = ["165:5", "165:6", "165:7"];
+  const query = { sensors: keys, width: 80, developer: false };
+  const data = await chart(document, query);
+  const full = await chart(document, query, undefined, true);
+  const times = data.series[keys[0]].map((point) => point.time);
+  for (const key of keys) {
+    assert.deepEqual(
+      data.series[key].map((point) => point.time),
+      times,
+    );
+    assert.ok(data.series[key].length <= 160);
+    const actual = new Map(
+      full.series[key]
+        .filter((point) => point.value !== null)
+        .map((point) => [point.time, point.value]),
+    );
+    for (const point of data.series[key])
+      if (point.value !== null)
+        assert.equal(point.value, actual.get(point.time));
+  }
+  assert.ok(data.series[keys[0]].some((point) => point.value === 10000));
+  assert.ok(data.series[keys[1]].some((point) => point.value === -20000));
+  assert.ok(data.series[keys[2]].some((point) => point.value === 30000));
+  const missing = data.series[keys[0]].findIndex(
+    (point) => point.value === -40000,
+  );
+  assert.ok(missing >= 0);
+  assert.equal(data.series[keys[1]][missing].value, null);
+  assert.equal(data.series[keys[2]][missing].value, 1065 % 17);
 });
 
 test("charts expose a named, default-on XYZ toggle without changing sensor selection", () => {
   const markup = renderToStaticMarkup(
     createElement(Charts, {
+      dates: {},
+      onDatesChange() {},
       client: new DocumentClient(),
       developer: false,
       active: true,

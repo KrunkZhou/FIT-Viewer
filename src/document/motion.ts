@@ -11,6 +11,7 @@ import type {
 import { readValue, valid, WIDTHS } from "../protocol/binary";
 import type { FitDocument } from "./document";
 import { SampleStatistics } from "./sample-statistics";
+import { hasTimeRange, inTimeRange } from "./time-range";
 
 export function isMotionSensor(sensor: Sensor): boolean {
   const [keyMessage, keyField] = sensor.key.split(":");
@@ -189,26 +190,38 @@ export async function* motionPoints(
     }
   }
 }
+interface MotionPoint {
+  time: number;
+  values: (number | null)[];
+  index: number;
+}
+interface MotionSample extends MotionPoint {
+  gaps: (MotionPoint | undefined)[];
+}
+interface EnvelopePoint extends ChartPoint {
+  sample: MotionSample;
+}
 interface Candidate {
-  point: ChartPoint;
+  point: EnvelopePoint;
   index: number;
   segment: number;
-  gap?: ChartPoint;
+  gap?: EnvelopePoint;
 }
 class Envelope {
-  readonly points: ChartPoint[] = [];
+  readonly points: EnvelopePoint[] = [];
   private index = 0;
   private segment = 0;
-  private gap?: ChartPoint;
+  private gap?: EnvelopePoint;
   private previous?: Candidate;
   private first?: Candidate;
   private last?: Candidate;
   private minimum?: Candidate;
   private maximum?: Candidate;
   constructor(private readonly size: number) {}
-  add(time: number, value: number | null): void {
+  add(sample: MotionSample, axis: number): void {
     if (this.index && this.index % this.size === 0) this.flush();
-    const point = { time, value };
+    const value = sample.values[axis] ?? null;
+    const point = { time: sample.time, value, sample };
     if (value === null) {
       this.segment++;
       this.gap = point;
@@ -248,7 +261,7 @@ class Envelope {
     }
     this.first = this.last = this.minimum = this.maximum = undefined;
   }
-  finish(): ChartPoint[] {
+  finish(): EnvelopePoint[] {
     this.flush();
     return this.points;
   }
@@ -264,7 +277,6 @@ export async function motionChart(
   end: number;
 }> {
   const capacity = Math.max(8, Math.min(8192, Math.round(query.width) * 2));
-  const buckets = Math.max(1, Math.floor(capacity / 8));
   const series: Record<string, ChartPoint[]> = {};
   let start = Infinity;
   let end = -Infinity;
@@ -291,7 +303,11 @@ export async function motionChart(
     for (let i = 0; i < ids.length; i++) {
       const record = document.index.records[ids[i]];
       const locations = layout(record);
-      if (query.start !== undefined || query.end !== undefined) {
+      if (
+        query.start !== undefined ||
+        query.end !== undefined ||
+        hasTimeRange(query.dates)
+      ) {
         const ms = values(document, record, locations.get(0))[0];
         if (record.timestamp !== undefined && ms !== null && ms !== undefined) {
           const visible = values(document, record, locations.get(1)).filter(
@@ -300,7 +316,8 @@ export async function motionChart(
               const time = record.timestamp! + (ms + offset) / 1000;
               return (
                 (query.start === undefined || time >= query.start) &&
-                (query.end === undefined || time <= query.end)
+                (query.end === undefined || time <= query.end) &&
+                inTimeRange(time, query.dates)
               );
             },
           ).length;
@@ -315,10 +332,26 @@ export async function motionChart(
       }
       if (i % 1024 === 0) await job.yield();
     }
-    const envelopes = fields.map(
-      () => new Envelope(Math.max(1, Math.ceil(count / buckets))),
-    );
+    const bucketCapacity = 2 * (fields.length + 1) ** 2;
+    const sharedCapacity = Math.max(capacity, bucketCapacity);
+    const buckets = Math.max(1, Math.floor(sharedCapacity / bucketCapacity));
+    const size =
+      count <= sharedCapacity ? 1 : Math.max(1, Math.ceil(count / buckets));
+    const envelopes = fields.map(() => new Envelope(size));
     const timeline = new Timeline();
+    let excluded = false;
+    let sampleIndex = 0;
+    const gaps: (MotionPoint | undefined)[] = fields.map(() => undefined);
+    const sampleAt = (
+      time: number,
+      values: (number | null)[],
+    ): MotionSample => {
+      const point = { time, values, index: sampleIndex++ };
+      values.forEach((value, axis) => {
+        if (value === null) gaps[axis] = point;
+      });
+      return { ...point, gaps: [...gaps] };
+    };
     let index = 0;
     for (const packet of packets(
       document,
@@ -333,13 +366,23 @@ export async function motionChart(
         if (
           time === undefined ||
           (query.start !== undefined && time < query.start) ||
-          (query.end !== undefined && time > query.end)
-        )
+          (query.end !== undefined && time > query.end) ||
+          !inTimeRange(time, query.dates)
+        ) {
+          excluded = true;
           continue;
+        }
         start = Math.min(start, time);
         end = Math.max(end, time);
+        if (gap || excluded) {
+          const marker = sampleAt(
+            time,
+            fields.map(() => null),
+          );
+          envelopes.forEach((envelope, axis) => envelope.add(marker, axis));
+        }
+        const values: (number | null)[] = [];
         for (let axis = 0; axis < fields.length; axis++) {
-          if (gap) envelopes[axis].add(time, null);
           let value = packet.axes[axis][sample] ?? null;
           if (
             value !== null &&
@@ -347,17 +390,33 @@ export async function motionChart(
               (query.filter?.max !== undefined && value > query.filter.max))
           )
             value = null;
-          envelopes[axis].add(time, value);
+          values.push(value);
         }
+        const point = sampleAt(time, values);
+        envelopes.forEach((envelope, axis) => envelope.add(point, axis));
+        excluded = false;
       }
       if (++index % 64 === 0) {
         job.progress(index, ids.length, "Preparing motion samples");
         await job.yield();
       }
     }
-    chosen.forEach(
-      (sensor, axis) => (series[sensor.key] = envelopes[axis].finish()),
-    );
+    // Keep the union of every axis's extrema, with exact companion values from
+    // the same source sample. Independent timestamps leave XYZ tooltips sparse.
+    const samples = new Map<number, MotionPoint>();
+    for (const envelope of envelopes)
+      for (const point of envelope.finish()) {
+        samples.set(point.sample.index, point.sample);
+        for (const gap of point.sample.gaps)
+          if (gap) samples.set(gap.index, gap);
+      }
+    const retained = [...samples.values()].sort((a, b) => a.index - b.index);
+    chosen.forEach((sensor, axis) => {
+      series[sensor.key] = retained.map((sample) => ({
+        time: sample.time,
+        value: sample.values[axis] ?? null,
+      }));
+    });
   }
   return { series, start, end };
 }

@@ -1,4 +1,3 @@
-import type { MessageBoxOptions } from "electron";
 import type { UpdateState } from "../src/updates";
 
 export interface UpdateOffer {
@@ -16,24 +15,6 @@ function offerFor(state: UpdateState): UpdateOffer | undefined {
 
 function key(offer?: UpdateOffer): string | undefined {
   return offer && `${offer.kind}:${offer.version}`;
-}
-
-export function updatePromptOptions(offer: UpdateOffer): MessageBoxOptions {
-  const install = offer.kind === "install";
-  return {
-    type: "info",
-    title: "Update FIT Viewer",
-    message: install
-      ? `FIT Viewer ${offer.version} is ready to install.`
-      : `FIT Viewer ${offer.version} is available.`,
-    detail: install
-      ? "Restart to finish updating. Open files and current view selections will be closed."
-      : "Download the new version from GitHub and install it manually. Your current files will stay open.",
-    buttons: [install ? "Restart to update" : "Download update", "Later"],
-    defaultId: 1,
-    cancelId: 1,
-    noLink: true,
-  };
 }
 
 export class UpdatePrompter {

@@ -18,7 +18,14 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { ChartData, ChartPoint, ExportQuery, Sensor } from "../model";
+import type {
+  ChartData,
+  ChartPoint,
+  ExportQuery,
+  Sensor,
+  TimeRange,
+} from "../model";
+import { DateRangeFilter } from "./DateRangeFilter";
 import type { DocumentClient } from "../document/client";
 import {
   IconButton,
@@ -29,10 +36,23 @@ import {
 } from "./controls";
 import {
   chartMemberKeys,
+  chartLines,
   groupMotionAxes,
   groupSensors,
   motionAxis,
 } from "./chart-groups";
+import {
+  chartTick,
+  chartTimeDomain,
+  chartTimeTicks,
+  chartTimeline,
+  chartTimeLabel,
+  dayPeriodRange,
+  dividerDate,
+  type ChartTimeDomain,
+  type ChartTimeline,
+} from "./chart-time";
+import { ChartPeriodLegend, ChartTraceLegend } from "./ChartLegend";
 
 const COLORS = [
   "#176856",
@@ -55,22 +75,36 @@ function Plot({
   sensor,
   points,
   traces,
+  lines,
   color,
   references,
   onZoom,
   active,
+  width,
+  timeScale,
 }: {
   sensor: Sensor;
   points: ChartPoint[];
   traces: { sensor: Sensor; points: ChartPoint[]; color: string }[];
+  lines: ReturnType<typeof chartLines>;
   color: string;
   references: number[];
   onZoom: (start: number, end: number) => void;
   active: boolean;
+  width: number;
+  timeScale?: {
+    domain: ChartTimeDomain;
+    ticks: number[];
+    timeline: ChartTimeline;
+  };
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   const [drag, setDrag] = useState<[number, number]>();
+  const timeline = useMemo(
+    () => timeScale?.timeline ?? chartTimeline(points, sensor.axis),
+    [points, sensor.axis, timeScale],
+  );
   useEffect(() => {
     const observer = new IntersectionObserver(([entry]) =>
       setVisible(entry.isIntersecting),
@@ -85,25 +119,23 @@ function Plot({
         {sensor.name}
         <span className="viewer-muted">{sensor.units}</span>
       </h3>
-      {traces.length > 1 && (
-        <div className="viewer-chart-traces">
-          {traces.map((trace) => (
-            <span key={trace.sensor.key} title={trace.sensor.name}>
-              <span
-                className="viewer-sensor-swatch"
-                style={{ background: trace.color }}
-              />
-              {trace.sensor.name}
-            </span>
-          ))}
-        </div>
-      )}
+      <ChartTraceLegend traces={traces} />
+      {timeline.periods.length > 0 && <ChartPeriodLegend />}
       <div className="viewer-chart-canvas" ref={ref}>
         {visible && active && (
           <ResponsiveContainer>
             <LineChart
               data={points}
-              margin={{ top: 5, right: 15, bottom: 5, left: 5 }}
+              margin={{
+                top: timeline.midnights.length
+                  ? 44
+                  : timeline.periods.length
+                    ? 24
+                    : 5,
+                right: 15,
+                bottom: 5,
+                left: 5,
+              }}
               onMouseDown={(event) => {
                 const label = event?.activeLabel;
                 if (label !== undefined && Number.isFinite(Number(label)))
@@ -119,6 +151,37 @@ function Plot({
                 setDrag(undefined);
               }}
             >
+              {timeline.periods.map((period) => (
+                <ReferenceArea
+                  key={`period-${period.start}`}
+                  x1={period.start}
+                  x2={period.end}
+                  fill={period.color}
+                  fillOpacity={0.08}
+                  stroke="none"
+                  label={({ viewBox }) => {
+                    if (
+                      !viewBox ||
+                      !("width" in viewBox) ||
+                      (viewBox.width ?? 0) < 68
+                    )
+                      return <g />;
+                    return (
+                      <text
+                        className="viewer-chart-period"
+                        x={(viewBox.x ?? 0) + (viewBox.width ?? 0) / 2}
+                        y={(viewBox.y ?? 0) - 8}
+                        textAnchor="middle"
+                        fill="var(--viewer-muted)"
+                        fontSize={11}
+                      >
+                        <title>{`${period.name}: ${dayPeriodRange(period.name)} (local time)`}</title>
+                        {period.name}
+                      </text>
+                    );
+                  }}
+                />
+              ))}
               <CartesianGrid
                 stroke="var(--viewer-border)"
                 strokeDasharray="3 3"
@@ -127,15 +190,35 @@ function Plot({
                 dataKey="time"
                 type="number"
                 allowDuplicatedCategory={false}
-                domain={["dataMin", "dataMax"]}
-                tickFormatter={(value) =>
-                  sensor.axis === "sample"
-                    ? String(value)
-                    : new Date(
-                        631065600000 + Number(value) * 1000,
-                      ).toLocaleTimeString()
-                }
-                tick={{ fill: "var(--viewer-muted)", fontSize: 11 }}
+                domain={timeScale?.domain ?? ["dataMin", "dataMax"]}
+                ticks={timeScale?.ticks}
+                allowDataOverflow={Boolean(timeScale)}
+                height={timeline.multipleDates ? 46 : 30}
+                minTickGap={24}
+                tick={({ x, y, payload }) => {
+                  const label =
+                    sensor.axis === "sample"
+                      ? { time: String(payload.value), date: undefined }
+                      : chartTick(Number(payload.value), timeline);
+                  return (
+                    <text
+                      x={x}
+                      y={y}
+                      textAnchor="middle"
+                      fill="var(--viewer-muted)"
+                      fontSize={11}
+                    >
+                      <tspan x={x} dy={12}>
+                        {label.time}
+                      </tspan>
+                      {label.date && (
+                        <tspan className="viewer-chart-date" x={x} dy={15}>
+                          {label.date}
+                        </tspan>
+                      )}
+                    </text>
+                  );
+                }}
               />
               <YAxis
                 domain={["auto", "auto"]}
@@ -150,12 +233,52 @@ function Plot({
                 labelFormatter={(value) =>
                   sensor.axis === "sample"
                     ? `Sample ${value}`
-                    : new Date(
-                        631065600000 + Number(value) * 1000,
-                      ).toLocaleString()
+                    : chartTimeLabel(Number(value))
                 }
+                formatter={(value, name, item) => [
+                  value,
+                  item.payload?.sourceName
+                    ? `${name} · ${item.payload.sourceName}`
+                    : name,
+                ]}
               />
-              {traces.map((trace) => (
+              {timeline.midnights.map((time, index) => (
+                <ReferenceLine
+                  key={`midnight-${time}`}
+                  className="viewer-chart-midnight"
+                  x={time}
+                  stroke="var(--viewer-muted)"
+                  strokeWidth={1.5}
+                  strokeDasharray="6 3"
+                  label={({ viewBox }) => {
+                    const stride = Math.max(
+                      1,
+                      Math.ceil(
+                        (timeline.midnights.length * 84) /
+                          Math.max(1, width - 72),
+                      ),
+                    );
+                    if (!viewBox || !("x" in viewBox) || index % stride !== 0)
+                      return <g />;
+                    const x = viewBox.x ?? 0;
+                    const date = dividerDate(time, timeline.multipleYears);
+                    return (
+                      <text
+                        className="viewer-chart-divider-date"
+                        x={x < 96 ? x + 4 : x - 4}
+                        y={(viewBox.y ?? 0) - 28}
+                        textAnchor={x < 96 ? "start" : "end"}
+                        fontSize={11}
+                        fontWeight={600}
+                        fill="var(--viewer-foreground)"
+                      >
+                        {date}
+                      </text>
+                    );
+                  }}
+                />
+              ))}
+              {lines.map((trace) => (
                 <Line
                   key={trace.sensor.key}
                   data={trace.points}
@@ -165,13 +288,13 @@ function Plot({
                   stroke={trace.color}
                   strokeWidth={1.5}
                   dot={false}
-                  connectNulls={false}
+                  connectNulls
                   isAnimationActive={false}
                 />
               ))}
               {references.map((value, i) => (
                 <ReferenceLine
-                  key={i}
+                  key={`reference-${i}`}
                   y={value}
                   stroke="var(--viewer-muted)"
                   strokeDasharray="4 4"
@@ -198,11 +321,17 @@ export default function Charts({
   developer,
   download,
   active,
+  dates,
+  onDatesChange,
+  availableDates,
 }: {
   client: DocumentClient;
   developer: boolean;
   download: (query: ExportQuery) => void;
   active: boolean;
+  dates: TimeRange;
+  onDatesChange: (dates: TimeRange) => void;
+  availableDates?: string[];
 }) {
   const [data, setData] = useState<ChartData>();
   const [selected, setSelected] = useState<string[]>(
@@ -218,6 +347,13 @@ export default function Charts({
     readPreference(
       "chartCombineXYZ",
       true,
+      (v): v is boolean => typeof v === "boolean",
+    ),
+  );
+  const [syncTime, setSyncTime] = useState(
+    readPreference(
+      "chartSyncTime",
+      false,
       (v): v is boolean => typeof v === "boolean",
     ),
   );
@@ -240,25 +376,39 @@ export default function Charts({
       groupMotionAxes(
         groups.filter((group) => selected.includes(group.sensor.key)),
         combineXYZ,
-      ).map((group) => {
-        const traces = group.members.map((member) => ({
-          sensor: member,
-          points: data?.series[member.key] ?? [],
-          color: sensorColor(member),
-        }));
-        return {
-          sensor: group.sensor,
-          traces,
-          points:
-            traces.length > 1
-              ? traces
-                  .flatMap((trace) => trace.points)
-                  .sort((a, b) => a.time - b.time)
-              : traces[0].points,
-        };
-      }),
+      )
+        .map((group) => {
+          const traces = group.members.map((member) => ({
+            sensor: member,
+            points: data?.series[member.key] ?? [],
+            color: sensorColor({ ...member, key: group.sensor.key }),
+          }));
+          const lines = chartLines(traces);
+          return {
+            sensor: group.sensor,
+            traces,
+            lines,
+            points:
+              lines.length > 1
+                ? lines
+                    .flatMap((trace) => trace.points)
+                    .sort((a, b) => a.time - b.time)
+                : lines[0].points,
+          };
+        })
+        .filter((plot) => plot.points.some((point) => point.value !== null)),
     [groups, selected, combineXYZ, data?.series],
   );
+  const timeScale = useMemo(() => {
+    if (!syncTime) return undefined;
+    const domain = chartTimeDomain(plots, range);
+    if (!domain) return undefined;
+    return {
+      domain,
+      ticks: chartTimeTicks(domain, width),
+      timeline: chartTimeline([], "time", domain),
+    };
+  }, [syncTime, plots, range, width]);
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) =>
       setWidth(Math.max(1, Math.round(entry.contentRect.width))),
@@ -266,6 +416,9 @@ export default function Charts({
     observer.observe(content.current!);
     return () => observer.disconnect();
   }, []);
+  useEffect(() => {
+    setRange({});
+  }, [dates]);
   useEffect(() => {
     if (!active) return;
     const controller = new AbortController();
@@ -288,6 +441,7 @@ export default function Charts({
             developer,
             ...range,
             filter,
+            dates,
           },
         },
         controller.signal,
@@ -335,7 +489,17 @@ export default function Charts({
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [client, selected, width, developer, range, filter, active, combineXYZ]);
+  }, [
+    client,
+    selected,
+    width,
+    developer,
+    range,
+    filter,
+    active,
+    combineXYZ,
+    dates,
+  ]);
   const change = (values: string[]) => {
     initialized.current = true;
     setSelected(values);
@@ -418,6 +582,7 @@ export default function Charts({
             Combine XYZ
             <Toggle
               label="Combine XYZ"
+              tooltip="Overlay matching accelerometer or gyroscope X, Y and Z axes on one chart. Different units stay separate."
               checked={combineXYZ}
               onChange={(checked) => {
                 setCombineXYZ(checked);
@@ -425,8 +590,26 @@ export default function Charts({
               }}
             />
           </label>
+          <label className="viewer-chart-combine">
+            Sync time
+            <Toggle
+              label="Sync time"
+              tooltip="Align time ranges, ticks and date dividers across all charts. Sample-index charts stay independent."
+              checked={syncTime}
+              onChange={(checked) => {
+                setSyncTime(checked);
+                savePreference("chartSyncTime", checked);
+              }}
+            />
+          </label>
+          <DateRangeFilter
+            value={dates}
+            onChange={onDatesChange}
+            availableDates={availableDates}
+          />
           <IconButton
             title="Reset zoom"
+            tooltip="Reset chart zoom within the selected dates"
             onClick={() => setRange({})}
             disabled={range.start === undefined && range.end === undefined}
           >
@@ -434,11 +617,13 @@ export default function Charts({
           </IconButton>
           <IconButton
             title="Download chart JSON"
+            tooltip="Download selected sensors at full resolution for the selected dates"
             onClick={() =>
               download({
                 format: "json",
                 developer,
                 sensors: chartMemberKeys(groups, selected),
+                dates,
               })
             }
             disabled={!selected.length || !groups.length}
@@ -482,6 +667,7 @@ export default function Charts({
             </label>
             <IconButton
               title="Clear value filter"
+              tooltip="Clear minimum and maximum value filters"
               onClick={() => setFilter({})}
             >
               <RotateCcw size={15} />
@@ -504,13 +690,16 @@ export default function Charts({
         <div className="viewer-loading-region">
           {loading && <LoadingIndicator label="Loading chart data" />}
           <div className="viewer-chart-plots">
-            {plots.map(({ sensor, traces, points }) => {
+            {plots.map(({ sensor, traces, lines, points }) => {
               return (
                 <Plot
+                  width={width}
                   active={active}
                   sensor={sensor}
                   points={points}
+                  timeScale={sensor.axis === "sample" ? undefined : timeScale}
                   traces={traces}
+                  lines={lines}
                   color={sensorColor(sensor)}
                   references={references}
                   onZoom={(start, end) => setRange({ start, end })}
@@ -520,6 +709,11 @@ export default function Charts({
             })}
             {!loading && !error && !selected.length && (
               <p className="viewer-muted empty-table">No sensors selected.</p>
+            )}
+            {!loading && !error && selected.length > 0 && !plots.length && (
+              <p className="viewer-muted empty-table">
+                No data matches the selected dates and filters.
+              </p>
             )}
           </div>
         </div>

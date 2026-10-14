@@ -15,10 +15,17 @@ import {
   Tooltip,
   useMap,
 } from "react-leaflet";
-import type { MapData, MapPoint, ExportQuery, Position } from "../model";
+import type {
+  MapData,
+  MapPoint,
+  ExportQuery,
+  Position,
+  TimeRange,
+} from "../model";
+import { DateRangeFilter } from "./DateRangeFilter";
 import type { DocumentClient } from "../document/client";
 import { IconButton, LoadingIndicator, Toggle } from "./controls";
-import { FIT_EPOCH } from "../protocol/time";
+import { formatTimestamp } from "../protocol/time";
 import { pointDetails, routeDetails } from "./map-details";
 import "leaflet/dist/leaflet.css";
 
@@ -59,9 +66,15 @@ function Bounds({ data }: { data: MapData }) {
 export default function ActivityMap({
   client,
   download,
+  dates,
+  onDatesChange,
+  availableDates,
 }: {
   client: DocumentClient;
   download: (query: ExportQuery) => void;
+  dates: TimeRange;
+  onDatesChange: (dates: TimeRange) => void;
+  availableDates?: string[];
 }) {
   const [data, setData] = useState<MapData>();
   const [error, setError] = useState("");
@@ -76,7 +89,11 @@ export default function ActivityMap({
   );
   const [legend, setLegend] = useState(false);
   const [satellite, setSatellite] = useState(false);
-  const [selected, setSelected] = useState<Position>();
+  const [selected, setSelected] = useState<Position & { route: number }>();
+  const selectedPosition = useMemo<[number, number] | undefined>(
+    () => (selected ? [selected.lat, selected.lon] : undefined),
+    [selected],
+  );
   const [hiddenRoutes, setHiddenRoutes] = useState<number[]>([]);
   const [hiddenPoints, setHiddenPoints] = useState<number[]>([]);
   const [hovered, setHovered] = useState<Highlight>();
@@ -110,8 +127,14 @@ export default function ActivityMap({
     const controller = new AbortController();
     setLoading(true);
     setError("");
+    setData(undefined);
+    setSelected(undefined);
+    setHiddenRoutes([]);
+    setHiddenPoints([]);
+    setHovered(undefined);
+    setFocused(undefined);
     client
-      .request<MapData>({ kind: "map" }, controller.signal)
+      .request<MapData>({ kind: "map", dates }, controller.signal)
       .then((next) => {
         if (!controller.signal.aborted) setData(next);
       })
@@ -123,7 +146,7 @@ export default function ActivityMap({
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [client]);
+  }, [client, dates]);
   const routeVisible = (route?: number) =>
     route === undefined || !hiddenRoutes.includes(route);
   const routeName = (route: number) =>
@@ -183,6 +206,11 @@ export default function ActivityMap({
             />
           )}
           <div className="viewer-map-tools">
+            <DateRangeFilter
+              value={dates}
+              onChange={onDatesChange}
+              availableDates={availableDates}
+            />
             {satelliteUrl && (
               <label>
                 Satellite{" "}
@@ -195,10 +223,15 @@ export default function ActivityMap({
             )}
             <IconButton
               title="Download GPX"
+              tooltip="Download GPS tracks as GPX for the selected dates"
+              disabled={
+                loading || !data || (!data.tracks.length && !data.points.length)
+              }
               onClick={() =>
                 download({
                   format: "gpx",
                   withLaps: pointTypes.includes("lap"),
+                  dates,
                 })
               }
             >
@@ -206,12 +239,21 @@ export default function ActivityMap({
             </IconButton>
             <IconButton
               title="Download GeoJSON"
-              onClick={() => download({ format: "geojson" })}
+              tooltip="Download GPS points as GeoJSON for the selected dates"
+              disabled={
+                loading || !data || (!data.tracks.length && !data.points.length)
+              }
+              onClick={() => download({ format: "geojson", dates })}
             >
               <FileJson2 size={17} />
             </IconButton>
             <IconButton
               title={legend ? "Hide map legend" : "Show map legend"}
+              tooltip={
+                legend
+                  ? "Hide map routes and points"
+                  : "Show map routes and points"
+              }
               aria-expanded={legend}
               aria-controls="map-legend"
               onClick={() => setLegend((value) => !value)}
@@ -262,7 +304,9 @@ export default function ActivityMap({
                               distance = next;
                             }
                           }
-                          setSelected(closest);
+                          setSelected(
+                            closest ? { ...closest, route } : undefined,
+                          );
                         },
                       }}
                     />
@@ -270,18 +314,17 @@ export default function ActivityMap({
               )}
               {selected && (
                 <Popup
-                  position={[selected.lat, selected.lon]}
+                  position={selectedPosition}
+                  autoPan={false}
+                  keepInView={false}
                   eventHandlers={{ remove: () => setSelected(undefined) }}
                 >
+                  <div>{routeName(selected.route)}</div>
                   <div>
                     {selected.lat.toFixed(7)}, {selected.lon.toFixed(7)}
                   </div>
                   {selected.time !== undefined && (
-                    <div>
-                      {new Date(
-                        FIT_EPOCH + selected.time * 1000,
-                      ).toLocaleString()}
-                    </div>
+                    <div>{formatTimestamp(selected.time)}</div>
                   )}
                   {selected.distance !== undefined && (
                     <div>{(selected.distance / 1000).toFixed(2)} km</div>
@@ -322,14 +365,13 @@ export default function ActivityMap({
                           {point.name?.split(" ")[0]}
                         </Tooltip>
                       )}
-                      <Popup>
+                      <Popup autoPan={false} keepInView={false}>
                         {pointName(point)}
+                        {point.route !== undefined && (
+                          <div>{routeName(point.route)}</div>
+                        )}
                         {point.time !== undefined && (
-                          <div>
-                            {new Date(
-                              FIT_EPOCH + point.time * 1000,
-                            ).toLocaleString()}
-                          </div>
+                          <div>{formatTimestamp(point.time)}</div>
                         )}
                       </Popup>
                     </CircleMarker>
@@ -370,6 +412,11 @@ export default function ActivityMap({
               )}
               <ScaleControl />
             </MapContainer>
+          )}
+          {!loading && data && !data.tracks.length && !data.points.length && (
+            <p className="viewer-map-empty" role="status">
+              No GPS data in the selected date range.
+            </p>
           )}
         </div>
         <aside

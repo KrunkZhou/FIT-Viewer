@@ -1,24 +1,43 @@
 import { randomUUID } from "node:crypto";
-import { lstat } from "node:fs/promises";
-import { basename, isAbsolute, resolve } from "node:path";
+import { lstat, opendir } from "node:fs/promises";
+import { basename, isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   isDesktopFileUrl,
+  isFitPath,
   DESKTOP_IMPORT_LIMIT_BYTES,
   MAX_INPUT_FILES,
   type FileSet,
 } from "../src/document/input";
 
-export function launchFiles(args: string[], cwd: string): string[] {
-  return [
+export async function launchFiles(
+  args: string[],
+  cwd: string,
+): Promise<string[]> {
+  const candidates = [
     ...new Set(
       args
         .filter(
-          (value) => !value.startsWith("-") && /\.(fit|zip)$/i.test(value),
+          (value) =>
+            value &&
+            !value.startsWith("-") &&
+            !/^[a-z][a-z\d+.-]*:\/\//i.test(value),
         )
-        .map((value) => (isAbsolute(value) ? value : resolve(cwd, value))),
+        .map((value) => resolve(cwd, value)),
     ),
   ];
+  const paths: string[] = [];
+  for (const path of candidates) {
+    if (/\.(fit|zip)$/i.test(path)) paths.push(path);
+    else if (
+      await lstat(path).then(
+        (stat) => stat.isDirectory(),
+        () => false,
+      )
+    )
+      paths.push(path);
+  }
+  return paths;
 }
 
 export class FileAccess {
@@ -41,12 +60,48 @@ export class FileAccess {
     >();
     const files: FileSet["files"] = [];
     let total = 0;
-    for (const path of unique) {
-      if (!isAbsolute(path) || !/\.(fit|zip)$/i.test(path))
-        throw new Error("Only FIT or ZIP files can be opened.");
+    let visited = 0;
+    let folderName: string | undefined;
+    const seen = new Set<string>();
+    const active = () => generation === this.generation;
+    const visit = async (
+      path: string,
+      name: string,
+      depth: number,
+      nested: boolean,
+    ): Promise<void> => {
+      if (!active()) return;
       const stat = await lstat(path);
-      if (generation !== this.generation) return;
-      if (!stat.isFile()) throw new Error("Select a regular FIT or ZIP file.");
+      if (!active()) return;
+      if (stat.isDirectory()) {
+        if (depth > 64)
+          throw new Error("The selected folder is too deeply nested.");
+        if (unique.length === 1 && !nested) folderName = basename(path);
+        const directory = await opendir(path);
+        for await (const entry of directory) {
+          if (!active()) return;
+          if (++visited > 100000)
+            throw new Error("The selected folder is too large.");
+          if (entry.name === "__MACOSX" || entry.name.startsWith("._"))
+            continue;
+          if (entry.isDirectory() || (entry.isFile() && isFitPath(entry.name)))
+            await visit(
+              join(path, entry.name),
+              `${name}/${entry.name}`,
+              depth + 1,
+              true,
+            );
+        }
+        return;
+      }
+      if (!stat.isFile())
+        throw new Error("Select a regular FIT or ZIP file or folder.");
+      if (nested ? !isFitPath(name) : !/\.(fit|zip)$/i.test(path))
+        throw new Error("Only FIT or ZIP files or folders can be opened.");
+      if (seen.has(path)) return;
+      seen.add(path);
+      if (files.length >= MAX_INPUT_FILES)
+        throw new Error(`Select no more than ${MAX_INPUT_FILES} FIT files.`);
       total += stat.size;
       if (total > this.maxBytes)
         throw new Error(
@@ -54,11 +109,24 @@ export class FileAccess {
         );
       const url = `fitviewer://app/import/${randomUUID()}`;
       next.set(url, { path, size: stat.size, mtime: stat.mtimeMs });
-      files.push({ name: basename(path), size: stat.size, url });
+      files.push({ name, size: stat.size, url });
+    };
+    for (const path of unique) {
+      if (!isAbsolute(path))
+        throw new Error(
+          "Only absolute FIT or ZIP file or folder paths can be opened.",
+        );
+      await visit(resolve(path), basename(path), 0, false);
+      if (!active()) return;
     }
+    if (!files.length)
+      throw new Error("The selected folders contain no FIT files.");
+    files.sort((a, b) => a.name.localeCompare(b.name));
     this.files = next;
     return {
-      name: files.length === 1 ? files[0].name : `${files.length} files`,
+      name:
+        folderName ||
+        (files.length === 1 ? files[0].name : `${files.length} files`),
       files,
     };
   }

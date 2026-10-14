@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { FileSet } from "../src/document/input";
 import type { UpdateState } from "../src/updates";
+import type { DesktopPromptState } from "../src/desktop-prompts";
 
 contextBridge.exposeInMainWorld("fitDesktop", {
   onOpen(callback: (selection: FileSet) => void) {
@@ -12,6 +13,17 @@ contextBridge.exposeInMainWorld("fitDesktop", {
   },
   release(urls: string[]) {
     ipcRenderer.send("files:release", urls);
+  },
+  prompts: {
+    getState: () => ipcRenderer.invoke("prompts:state"),
+    respond: (id: number, accepted: boolean) =>
+      ipcRenderer.invoke("prompts:respond", id, accepted),
+    onChange(callback: (state: DesktopPromptState) => void) {
+      const listener = (_event: unknown, state: DesktopPromptState) =>
+        callback(state);
+      ipcRenderer.on("prompts:changed", listener);
+      return () => ipcRenderer.removeListener("prompts:changed", listener);
+    },
   },
   updates: {
     getState: () => ipcRenderer.invoke("updates:state"),

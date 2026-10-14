@@ -1,4 +1,4 @@
-import type { ExportResult, Job } from "../model";
+import type { ExportResult, Job, TimeRange } from "../model";
 import type { FitDocument } from "../document/document";
 import { mapPositions } from "../document/series";
 import { FIT_EPOCH } from "../protocol/time";
@@ -6,6 +6,7 @@ import { FIT_EPOCH } from "../protocol/time";
 export async function exportGeoJson(
   document: FitDocument,
   job: Job,
+  dates?: TimeRange,
 ): Promise<ExportResult> {
   const encoder = new TextEncoder();
   const parts: BlobPart[] = ['{"type":"FeatureCollection","features":['];
@@ -21,11 +22,15 @@ export async function exportGeoJson(
     first = false;
     batch = [];
   };
-  for await (const entry of mapPositions(document, {
-    ...job,
-    progress: (completed, total) =>
-      job.progress(completed, total, "Exporting GeoJSON"),
-  })) {
+  for await (const entry of mapPositions(
+    document,
+    {
+      ...job,
+      progress: (completed, total) =>
+        job.progress(completed, total, "Exporting GeoJSON"),
+    },
+    dates,
+  )) {
     const point = entry.point;
     if (entry.message === 20) {
       if (

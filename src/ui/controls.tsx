@@ -7,6 +7,7 @@ import {
 } from "react";
 import { LoaderCircle, X } from "lucide-react";
 import * as Switch from "@radix-ui/react-switch";
+import { ControlTooltip } from "./ControlTooltip";
 
 export function LoadingIndicator({ label }: { label: string }) {
   return (
@@ -19,18 +20,27 @@ export function LoadingIndicator({ label }: { label: string }) {
 export function IconButton({
   title,
   children,
+  tooltip,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { title: string }) {
-  return (
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  title: string;
+  tooltip?: string;
+}) {
+  const button = (
     <button
       type="button"
       className="viewer-icon-button"
-      title={title}
+      title={tooltip ? undefined : title}
       aria-label={title}
       {...props}
     >
       {children}
     </button>
+  );
+  return tooltip ? (
+    <ControlTooltip content={tooltip}>{button}</ControlTooltip>
+  ) : (
+    button
   );
 }
 export function Toggle({
@@ -39,14 +49,16 @@ export function Toggle({
   onChange,
   descriptionId,
   disabled,
+  tooltip,
 }: {
   label: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
   descriptionId?: string;
   disabled?: boolean;
+  tooltip?: string;
 }) {
-  return (
+  const control = (
     <Switch.Root
       className="toggle"
       aria-label={label}
@@ -57,6 +69,11 @@ export function Toggle({
     >
       <Switch.Thumb />
     </Switch.Root>
+  );
+  return tooltip ? (
+    <ControlTooltip content={tooltip}>{control}</ControlTooltip>
+  ) : (
+    control
   );
 }
 export function Modal({

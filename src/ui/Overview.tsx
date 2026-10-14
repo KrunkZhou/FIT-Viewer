@@ -1,14 +1,12 @@
-import { AlertTriangle, ArrowRight, Download, FileJson2 } from "lucide-react";
-import type { DocumentSummary, ExportQuery } from "../model";
-import { FIT_EPOCH } from "../protocol/time";
+import { AlertTriangle, ArrowRight } from "lucide-react";
+import type { DocumentSummary } from "../model";
+import { FIT_EPOCH, formatTimestamp } from "../protocol/time";
 export function Overview({
   summary,
   diagnostics,
-  download,
 }: {
   summary: DocumentSummary;
   diagnostics: () => void;
-  download: (query: ExportQuery) => void;
 }) {
   const issues = summary.diagnosticCount;
   const start = summary.startTimestamp;
@@ -24,26 +22,7 @@ export function Overview({
     duration && duration > 0 ? (summary.bytes * 3600) / duration : undefined;
   return (
     <section className="overview-content">
-      <div className="viewer-overview-toolbar">
-        <h2 className="viewer-section-title">File overview</h2>
-        {summary.hasMap && (
-          <div className="viewer-overview-exports">
-            <button
-              className="viewer-command"
-              onClick={() => download({ format: "gpx" })}
-            >
-              <Download size={16} /> Export GPX
-            </button>
-            <button
-              className="viewer-command"
-              title="Download GeoJSON"
-              onClick={() => download({ format: "geojson" })}
-            >
-              <FileJson2 size={16} /> GeoJSON
-            </button>
-          </div>
-        )}
-      </div>
+      <h2 className="viewer-section-title">File overview</h2>
       <dl className="viewer-metrics">
         <div className="viewer-metric-time">
           <dt>Start - end time</dt>
@@ -58,7 +37,7 @@ export function Overview({
                     FIT_EPOCH + timestamp * 1000,
                   ).toISOString()}
                 >
-                  {new Date(FIT_EPOCH + timestamp * 1000).toLocaleString()}
+                  {formatTimestamp(timestamp)}
                 </time>
               ),
             )}
@@ -112,14 +91,14 @@ export function Overview({
         </div>
         <div>
           <dt>File size</dt>
-          <dd>{summary.bytes.toLocaleString()} bytes</dd>
+          <dd>{formatFileSize(summary.bytes)}</dd>
         </div>
         <div>
           <dt>Size per hour</dt>
           <dd>
             {sizePerHour === undefined
               ? "-"
-              : `${sizePerHour.toLocaleString(undefined, { maximumFractionDigits: 0 })} bytes/hour`}
+              : formatFileSize(sizePerHour, true)}
           </dd>
         </div>
         {summary.sports.length > 0 && (
@@ -192,9 +171,32 @@ export function Overview({
   );
 }
 
+function formatFileSize(bytes: number, perHour = false): string {
+  const units = ["KB", "MB", "GB", "TB"];
+  let size = bytes / 1024;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  const formatted = size.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  const suffix = perHour ? "/hour" : "";
+  return `${formatted} ${units[unit]}${suffix} (${bytes.toLocaleString(undefined, { maximumFractionDigits: 0 })} bytes${suffix})`;
+}
+
 function formatDuration(seconds: number): string {
   const total = Math.floor(seconds);
-  return [Math.floor(total / 3600), Math.floor(total / 60) % 60, total % 60]
+  const clock = [
+    Math.floor(total / 3600),
+    Math.floor(total / 60) % 60,
+    total % 60,
+  ]
     .map((value) => String(value).padStart(2, "0"))
     .join(":");
+  return seconds > 86400
+    ? `${clock} (${(seconds / 86400).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} days)`
+    : clock;
 }

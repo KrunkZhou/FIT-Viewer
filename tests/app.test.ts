@@ -6,8 +6,10 @@ import App from "../src/App";
 
 test("empty app keeps file controls without section tabs or orphaned tab panels", () => {
   const markup = renderToStaticMarkup(createElement(App));
-  assert.ok(markup.includes("No file selected"));
-  assert.ok(markup.includes("Open FIT file"));
+  assert.ok(markup.includes("<h2>FIT Viewer</h2>"));
+  assert.ok(markup.includes("Drop or open FIT files here"));
+  assert.ok(markup.includes("viewer-drop-button"));
+  assert.ok(!markup.includes('class="open-file"'));
   assert.ok(markup.includes("Developer"));
   assert.ok(markup.includes('aria-label="App information"'));
   assert.ok(markup.includes("viewer-empty"));

@@ -1,5 +1,6 @@
 import type { FileSet } from "./document/input";
 import type { DesktopUpdates } from "./updates";
+import type { DesktopPromptsApi } from "./desktop-prompts";
 
 declare global {
   interface Window {
@@ -7,6 +8,7 @@ declare global {
       onOpen: (callback: (selection: FileSet) => void) => () => void;
       release: (urls: string[]) => void;
       updates: DesktopUpdates;
+      prompts: DesktopPromptsApi;
     };
   }
 }

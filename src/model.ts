@@ -83,6 +83,7 @@ export interface DocumentSummary {
   startTimestamp?: number;
   endTimestamp?: number;
   durationSeconds?: number;
+  availableDates: string[];
   sports: string[];
   fileTypes: string[];
   messages: MessageInfo[];
@@ -151,6 +152,7 @@ export interface Sensor {
   units: string;
   axis?: "time" | "sample";
   source?: number;
+  sourceName?: string;
   message?: number;
   field?: string;
   pointCount?: number;
@@ -166,6 +168,12 @@ export interface ChartQuery {
   end?: number;
   developer: boolean;
   filter?: { min?: number; max?: number };
+  dates?: TimeRange;
+}
+export interface TimeRange {
+  start?: number;
+  end?: number;
+  intervals?: { start: number; end: number }[];
 }
 export interface ChartData {
   sensors: Sensor[];
@@ -200,6 +208,7 @@ export interface ExportQuery {
   timezone?: string;
   sensors?: string[];
   withLaps?: boolean;
+  dates?: TimeRange;
 }
 export interface ExportResult {
   blob: Blob;
@@ -219,7 +228,7 @@ export type RequestPayload = (
   | { kind: "table"; query: TableQuery }
   | { kind: "singletons"; developer: boolean }
   | { kind: "chart"; query: ChartQuery }
-  | { kind: "map" }
+  | { kind: "map"; dates?: TimeRange }
   | { kind: "diagnostics"; page: number; size: number }
   | { kind: "export"; query: ExportQuery }
   | { kind: "cancel"; target: number }

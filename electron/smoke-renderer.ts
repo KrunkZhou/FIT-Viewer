@@ -73,7 +73,8 @@ export async function checkDesktopSelection(name: string, sources: number) {
   }
   if (
     !window.fitDesktop ||
-    Object.keys(window.fitDesktop).sort().join(",") !== "onOpen,release,updates"
+    Object.keys(window.fitDesktop).sort().join(",") !==
+      "onOpen,prompts,release,updates"
   )
     throw new Error("Desktop preload API is missing or overly broad");
   if (!document.querySelector("input[webkitdirectory]"))
@@ -87,6 +88,61 @@ export async function checkDesktopSelection(name: string, sources: number) {
   if (!icon || !(await fetch(icon.href)).ok)
     throw new Error("Desktop icon is unavailable");
   return { name, sources, folderPicker: true, icon: true };
+}
+
+export async function checkDesktopNotifications() {
+  const waitFor = async (predicate: () => boolean) => {
+    const deadline = performance.now() + 5000;
+    while (!predicate()) {
+      if (performance.now() > deadline)
+        throw new Error("Desktop notifications did not respond");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  };
+  const api = window.fitDesktop?.prompts;
+  if (!api || Object.keys(api).sort().join(",") !== "getState,onChange,respond")
+    throw new Error("Notification preload API is missing or overly broad");
+  await waitFor(
+    () =>
+      document.querySelectorAll(
+        '.viewer-desktop-notification[aria-modal="false"]',
+      ).length === 2,
+  );
+  if (document.querySelector(':modal, [inert], [aria-modal="true"]'))
+    throw new Error("Notifications block the main app");
+  const tabs = Array.from(
+    document.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
+  );
+  const messages = tabs.find((tab) => tab.textContent?.includes("Messages"))!;
+  messages.click();
+  await waitFor(() => messages.getAttribute("aria-selected") === "true");
+  if (document.querySelectorAll(".viewer-desktop-notification").length !== 2)
+    throw new Error("Navigation dismissed a notification");
+  const buttons = () =>
+    Array.from(
+      document.querySelectorAll<HTMLButtonElement>(
+        ".viewer-desktop-notification button",
+      ),
+    );
+  buttons()
+    .find((button) => button.textContent === "Not now")!
+    .click();
+  await waitFor(
+    () =>
+      document.querySelectorAll(".viewer-desktop-notification").length === 1,
+  );
+  buttons()
+    .find((button) => button.textContent === "Later")!
+    .click();
+  await waitFor(
+    () =>
+      document.querySelectorAll(".viewer-desktop-notification").length === 0,
+  );
+  if ((await api.getState()).prompts.length)
+    throw new Error("Dismissed prompts remain in the main process");
+  tabs.find((tab) => tab.textContent?.includes("Overview"))!.click();
+  await waitFor(() => !!document.body.textContent?.includes("File overview"));
+  return { nonmodal: true, navigation: true, dismissed: true };
 }
 
 export async function checkAppInformation(version: string) {

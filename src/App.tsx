@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { DocumentClient } from "./document/client";
 import { AppInfo } from "./ui/AppInfo";
+import { DesktopNotifications } from "./ui/DesktopNotifications";
 import { ImportLimitDialog } from "./ui/ImportLimitDialog";
 import {
   ImportSizeError,
@@ -31,7 +32,8 @@ import {
 } from "./document/input";
 import { captureDrop, collectDrop } from "./ui/file-drop";
 import { Downloads } from "./ui/download";
-import type { DocumentSummary, ExportQuery } from "./model";
+import type { DocumentSummary, ExportQuery, TimeRange } from "./model";
+import { ControlTooltip } from "./ui/ControlTooltip";
 import { Overview } from "./ui/Overview";
 import { Messages } from "./ui/Messages";
 import { Diagnostics } from "./ui/Diagnostics";
@@ -56,6 +58,7 @@ export default function App() {
   const [workspace, setWorkspace] = useState<DocumentSummary>();
   const [source, setSource] = useState("");
   const [developer, setDeveloper] = useState(false);
+  const [dates, setDates] = useState<TimeRange>({});
   const [tab, setTab] = useState<Tab>("overview");
   const [visited, setVisited] = useState<Tab[]>(["overview"]);
   const [theme, setTheme] = useState<"light" | "dark">(() =>
@@ -135,6 +138,7 @@ export default function App() {
     );
     setProgress({ value: 0, phase: "Opening file" });
     setWorkspace(undefined);
+    setDates({});
     setSource("");
     let desktopUrls: string[] = [];
     const limit = importLimitBytes(
@@ -291,11 +295,7 @@ export default function App() {
   const content = summary ? (
     <Fragment key={generation.current}>
       <div className="section-view" hidden={tab !== "overview"}>
-        <Overview
-          summary={summary}
-          diagnostics={() => setTab("diagnostics")}
-          download={download}
-        />
+        <Overview summary={summary} diagnostics={() => setTab("diagnostics")} />
       </div>
       {visited.includes("messages") && (
         <div className="section-view" hidden={tab !== "messages"}>
@@ -310,16 +310,25 @@ export default function App() {
       )}
       {summary.hasMap && visited.includes("map") && (
         <div className="section-view" hidden={tab !== "map"}>
-          <ActivityMap client={client} download={download} />
+          <ActivityMap
+            client={client}
+            availableDates={summary.availableDates}
+            download={download}
+            dates={dates}
+            onDatesChange={setDates}
+          />
         </div>
       )}
       {visited.includes("chart") && (
         <div className="section-view" hidden={tab !== "chart"}>
           <Charts
             client={client}
+            availableDates={summary.availableDates}
             developer={developer}
             download={download}
             active={tab === "chart"}
+            dates={dates}
+            onDatesChange={setDates}
           />
         </div>
       )}
@@ -340,21 +349,22 @@ export default function App() {
     </Fragment>
   ) : (
     <div className="viewer-empty">
-      {busy ? (
-        <LoaderCircle className="spin" size={24} />
-      ) : (
-        <Upload size={28} />
-      )}
-      <h2>{busy ? "Opening FIT file..." : "Open a FIT file"}</h2>
-      {!busy && (
-        <button
-          className="viewer-open-button"
-          onClick={() => fileInput.current?.click()}
-        >
-          <Upload size={16} />
-          Open FIT file
-        </button>
-      )}
+      <button
+        type="button"
+        className="viewer-drop-button"
+        disabled={busy}
+        aria-busy={busy}
+        onClick={() => fileInput.current?.click()}
+      >
+        {busy ? (
+          <LoaderCircle className="spin" size={36} />
+        ) : (
+          <Upload size={36} />
+        )}
+        <span>
+          {busy ? "Opening FIT files..." : "Drop or open FIT files here"}
+        </span>
+      </button>
     </div>
   );
   return (
@@ -376,12 +386,18 @@ export default function App() {
       <input
         ref={fileInput}
         type="file"
+        multiple
         accept=".fit,.zip"
         className="file-input"
         aria-label="Open FIT file"
         onChange={(event) => {
-          if (event.target.files?.[0]) void open(event.target.files[0]);
+          const files = Array.from(event.target.files ?? []);
           event.target.value = "";
+          if (files.length === 1) void open(files[0]);
+          else if (files.length)
+            void open((signal, limit) =>
+              collectDrop({ entries: [], files }, signal, limit, () => {}),
+            );
         }}
       />
       {desktop && (
@@ -403,10 +419,11 @@ export default function App() {
         />
       )}
       <main className="viewer-main">
+        <DesktopNotifications />
         <header className="viewer-file-bar">
           <div className="viewer-file">
             <AppInfo />
-            <h2>{summary?.filename ?? selectedName ?? "No file selected"}</h2>
+            <h2>{summary?.filename ?? selectedName ?? "FIT Viewer"}</h2>
             {workspace && workspace.sources.length > 1 && (
               <select
                 aria-label="Source file"
@@ -444,10 +461,15 @@ export default function App() {
                 className="viewer-mode-tooltip"
               >
                 Shows raw recorded values and undocumented message types and
-                fields. Does not modify the FIT file.
+                fields.
               </span>
             </label>
             <IconButton
+              tooltip={
+                theme === "dark"
+                  ? "Switch to light mode"
+                  : "Switch to dark mode"
+              }
               title={
                 theme === "dark"
                   ? "Switch to light mode"
@@ -460,21 +482,27 @@ export default function App() {
             {summary?.hasHrv && (
               <IconButton
                 title="Download RR intervals"
+                tooltip="Download RR intervals as text"
                 onClick={() => download({ format: "hrv" })}
               >
                 <Download size={18} />
               </IconButton>
             )}
-            <button
-              className="open-file"
-              onClick={() => fileInput.current?.click()}
-            >
-              <Upload size={15} />
-              <span>Open FIT file</span>
-            </button>
-            {desktop && (
+            {summary && (
+              <ControlTooltip content="Open FIT files or ZIP archives">
+                <button
+                  className="open-file"
+                  onClick={() => fileInput.current?.click()}
+                >
+                  <Upload size={15} />
+                  <span>Open FIT file</span>
+                </button>
+              </ControlTooltip>
+            )}
+            {desktop && summary && (
               <IconButton
                 title="Open FIT folder"
+                tooltip="Open a folder containing FIT files"
                 onClick={() => folderInput.current?.click()}
               >
                 <FolderOpen size={18} />

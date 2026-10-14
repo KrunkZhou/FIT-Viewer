@@ -1,11 +1,12 @@
 import type { ExportQuery, ExportResult, FieldInfo, RawValue } from "../model";
 import { FitDocument } from "../document/document";
 import { chartPoints, mapPositions, sensors } from "../document/series";
-import { FIT_EPOCH } from "../protocol/time";
+import { FIT_EPOCH, HOUR_CYCLE } from "../protocol/time";
 import { idleJob } from "../protocol/reader";
 import { repair } from "../repair/repair";
 import { exportGeoJson } from "./geojson";
 import { repairArchive } from "./archive";
+import { hasTimeRange, inTimeRange } from "../document/time-range";
 
 export const escapeCsv = (value: string): string =>
   /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
@@ -43,7 +44,8 @@ export async function exportDocument(
   query: ExportQuery,
   job = idleJob(),
 ): Promise<ExportResult> {
-  if (query.format === "geojson") return exportGeoJson(document, job);
+  if (query.format === "geojson")
+    return exportGeoJson(document, job, query.dates);
   const base = document.filename.replace(/\.[^.]+$/, "");
   const parts: BlobPart[] = [];
   const encoder = new TextEncoder();
@@ -83,6 +85,7 @@ export async function exportDocument(
         : [],
     );
     const dateFormat = new Intl.DateTimeFormat(query.locale, {
+      hourCycle: HOUR_CYCLE,
       timeZone: query.timezone,
       year: "numeric",
       month: "2-digit",
@@ -177,7 +180,7 @@ export async function exportDocument(
       tag: string,
     ) =>
       `<${tag} lat="${p.lat}" lon="${p.lon}">${p.elevation !== undefined ? `<ele>${p.elevation}</ele>` : ""}${p.time !== undefined ? `<time>${new Date(FIT_EPOCH + p.time * 1000).toISOString()}</time>` : ""}${p.name ? `<name>${xml(p.name)}</name>` : ""}</${tag}>`;
-    for await (const entry of mapPositions(document, job))
+    for await (const entry of mapPositions(document, job, query.dates))
       if (
         entry.point &&
         entry.message !== 20 &&
@@ -195,7 +198,7 @@ export async function exportDocument(
         batch = [];
       }
     };
-    for await (const entry of mapPositions(document, job)) {
+    for await (const entry of mapPositions(document, job, query.dates)) {
       if (entry.message !== 20) continue;
       const p = entry.point;
       if (
@@ -296,13 +299,14 @@ export async function exportDocument(
         batch = [];
       }
     };
-    if (sensor)
+    if (sensor && !(sensor.axis === "sample" && hasTimeRange(query.dates)))
       for await (const point of chartPoints(
         document,
         sensor,
         Boolean(query.developer),
         job,
       )) {
+        if (!inTimeRange(point.time, query.dates)) continue;
         batch.push(json(point));
         if (batch.length >= 256) {
           flush();

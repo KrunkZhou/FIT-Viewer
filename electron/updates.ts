@@ -1,6 +1,5 @@
 import {
   app,
-  dialog,
   ipcMain,
   shell,
   type BrowserWindow,
@@ -10,14 +9,15 @@ import { join } from "node:path";
 import { appNavigation } from "./resources";
 import { UpdateController } from "./update-controller";
 import { createUpdateBackend } from "./update-backend";
-import { UpdatePrompter, updatePromptOptions } from "./update-prompt";
+import { UpdatePrompter } from "./update-prompt";
+import type { DesktopPromptHost } from "./prompts";
 import { GITHUB_URL } from "../src/app-info";
 import {
   readUpdatePreference,
   writeUpdatePreference,
 } from "./update-preference";
 
-export async function desktopUpdates() {
+export async function desktopUpdates(notifications: DesktopPromptHost) {
   const path = join(app.getPath("userData"), "updates.json");
   const controller = new UpdateController(
     createUpdateBackend(
@@ -36,11 +36,7 @@ export async function desktopUpdates() {
     async show(offer, signal) {
       const parent = window;
       if (!parent || parent.isDestroyed()) return false;
-      const { response } = await dialog.showMessageBox(parent, {
-        ...updatePromptOptions(offer),
-        signal,
-      });
-      return response === 0;
+      return (await notifications.show(offer, signal)) === true;
     },
     install: () => controller.install(),
     download: (version) =>

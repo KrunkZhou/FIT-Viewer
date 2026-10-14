@@ -18,8 +18,10 @@ import type {
 import type { DocumentClient } from "../document/client";
 import { displayCell, fieldTooltip } from "./format";
 import { FIT_EPOCH } from "../protocol/time";
+import { dateInputValue } from "./date-filter";
 import { SingleEntryMessages } from "./SingleEntryMessages";
 import { TableScroll } from "./TableScroll";
+import { PageNumber } from "./PageNumber";
 import {
   IconButton,
   navigateTabs,
@@ -61,7 +63,10 @@ export function Messages({
   const [data, setData] = useState<TablePage>();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [time, setTime] = useState("");
+  const [searchDate, setSearchDate] = useState(
+    dateInputValue(summary.startTimestamp),
+  );
+  const [time, setTime] = useState("00:00:00");
   const pendingTarget = useRef<{ message: number; record: number } | undefined>(
     undefined,
   );
@@ -318,13 +323,14 @@ export function Messages({
                                     sideOffset={6}
                                   >
                                     <form
+                                      className="viewer-timestamp-search"
                                       onSubmit={(event) => {
                                         event.preventDefault();
-                                        const value = new FormData(
+                                        const fields = new FormData(
                                           event.currentTarget,
-                                        ).get("timestamp");
+                                        );
                                         const millis = Date.parse(
-                                          String(value ?? ""),
+                                          `${fields.get("date")}T${fields.get("time")}`,
                                         );
                                         if (Number.isFinite(millis))
                                           setQuery((q) => ({
@@ -335,17 +341,37 @@ export function Messages({
                                           }));
                                       }}
                                     >
-                                      <input
-                                        type="datetime-local"
-                                        name="timestamp"
-                                        step="any"
-                                        aria-label="Timestamp"
-                                        value={time}
-                                        onChange={(event) =>
-                                          setTime(event.target.value)
-                                        }
-                                        required
-                                      />
+                                      <label>
+                                        Date
+                                        <input
+                                          type="date"
+                                          name="date"
+                                          aria-label="Timestamp date"
+                                          value={searchDate}
+                                          onChange={(event) =>
+                                            setSearchDate(event.target.value)
+                                          }
+                                          required
+                                        />
+                                      </label>
+                                      <label>
+                                        Time (24h)
+                                        <input
+                                          type="text"
+                                          name="time"
+                                          aria-label="Timestamp time (24h)"
+                                          placeholder="HH:mm:ss"
+                                          pattern="([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9]([.][0-9]{1,3})?)?"
+                                          value={time}
+                                          onChange={(event) =>
+                                            setTime(event.target.value)
+                                          }
+                                          required
+                                        />
+                                      </label>
+                                      <small className="viewer-muted">
+                                        Local time
+                                      </small>
                                       <button className="primary" type="submit">
                                         Find
                                       </button>
@@ -486,9 +512,12 @@ export function Messages({
                     >
                       <ChevronLeft size={16} />
                     </IconButton>
-                    <span className="viewer-pagination-page">
-                      Page {(data?.page ?? 0) + 1} / {pages}
-                    </span>
+                    <PageNumber
+                      page={data?.page ?? 0}
+                      pages={pages}
+                      disabled={!data || loading}
+                      onChange={changePage}
+                    />
                     <IconButton
                       title="Next page"
                       disabled={!data || data.page >= pages - 1}

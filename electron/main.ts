@@ -4,6 +4,7 @@ import { launchFiles } from "./file-access";
 import { OpenFiles } from "./open-files";
 import { askFileAssociation } from "./windows-association";
 import { desktopUpdates } from "./updates";
+import { desktopPrompts, type DesktopPromptHost } from "./prompts";
 
 app.setName("FIT Viewer");
 app.setAppUserModelId("app.fitviewer.desktop");
@@ -12,10 +13,12 @@ if (!primary) app.quit();
 else {
   const files = new OpenFiles();
   let updates: Awaited<ReturnType<typeof desktopUpdates>>;
-  let pending = launchFiles(
+  let notifications: DesktopPromptHost;
+  const initialPaths = launchFiles(
     process.argv.slice(app.isPackaged ? 1 : 2),
     process.cwd(),
   );
+  let pending: string[] = [];
   let ready = false;
   let creating: Promise<BrowserWindow> | undefined;
   let openTimer: ReturnType<typeof setTimeout> | undefined;
@@ -25,6 +28,7 @@ else {
     if (existing) return Promise.resolve(existing);
     creating = createWindow(true, undefined, (window) => {
       files.attach(window);
+      notifications.attach(window);
       updates.attach(window);
     }).finally(() => {
       creating = undefined;
@@ -51,18 +55,24 @@ else {
     schedule();
   });
   app.on("second-instance", (_event, argv, cwd) => {
-    pending.push(...launchFiles(argv.slice(app.isPackaged ? 1 : 2), cwd));
-    schedule();
+    void launchFiles(argv.slice(app.isPackaged ? 1 : 2), cwd)
+      .then((paths) => {
+        pending.push(...paths);
+        schedule();
+      })
+      .catch(console.error);
   });
   app
     .whenReady()
     .then(async () => {
+      pending.unshift(...(await initialPaths));
       await registerBundle(undefined, files.access);
-      updates = await desktopUpdates();
+      notifications = desktopPrompts();
+      updates = await desktopUpdates(notifications);
       const window = await ensureWindow();
       ready = true;
       await deliver();
-      void askFileAssociation(window).catch(console.error);
+      void askFileAssociation(window, notifications).catch(console.error);
       app.on("activate", () => {
         void ensureWindow().catch(console.error);
       });

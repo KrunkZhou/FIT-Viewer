@@ -62,11 +62,11 @@ body { margin: 0; overflow: hidden; }
 .viewer-section-title { font-size: 18px; font-weight: 600; line-height: 1.5; }
 .viewer-section-heading { display: flex; align-items: center; gap: 16px; justify-content: space-between; flex-wrap: wrap; }
 .viewer-muted { font-size: 12px; color: var(--viewer-muted); }
-.viewer-empty { display: flex; min-height: 400px; align-items: center; justify-content: center; flex-direction: column; gap: 18px; padding: 40px 16px; }
-.viewer-empty h2 { font-size: 22px; font-weight: 550; text-align: center; }
-.viewer-open-button { position: relative; display: inline-flex; align-items: center; gap: 10px; padding: 11px 18px; color: white; background: #176856; border-radius: 6px; font-size: 14px; cursor: pointer; }
-.viewer-open-button:hover { background: #115240; }
-.viewer-open-button:focus-within { outline: 2px solid #2563eb; outline-offset: 3px; }
+.viewer-empty { display: flex; height: 100%; min-height: 0; align-items: center; justify-content: center; padding: 20px 0; }
+.viewer-drop-button { display: flex; flex: none; width: min(100%, 760px); height: min(320px, 100%); min-width: 0; min-height: 180px; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; border: 3px dotted var(--viewer-muted); border-radius: 20px; background: transparent; color: var(--viewer-muted); font-size: 20px; font-weight: 550; text-align: center; }
+.viewer-drop-button > span { max-width: 100%; color: var(--viewer-foreground); overflow-wrap: anywhere; }
+.viewer-drop-button:hover:not(:disabled) { border-color: var(--viewer-accent); color: var(--viewer-accent); background: var(--viewer-accent-soft); }
+.viewer-drop-button:focus-visible { outline: 2px solid var(--viewer-accent); outline-offset: 4px; }
 .viewer-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 24px 0; padding: 22px 0; border-block: 1px solid var(--viewer-border); }
 .viewer-metrics > div { padding: 0 24px; border-right: 1px solid var(--viewer-border); }
 .viewer-metrics > div:first-child { padding-left: 0; }
@@ -116,6 +116,9 @@ body { margin: 0; overflow: hidden; }
 .viewer-pagination-navigation { display: flex; align-items: center; gap: 2px; }
 .viewer-pagination-navigation .viewer-icon-button { width: 28px; height: 28px; }
 .viewer-pagination-page { text-align: center; min-width: 76px; padding-inline: 4px; }
+.viewer-pagination-page .viewer-page-number { width: auto; min-width: 2ch; max-width: 9ch; height: 24px; padding: 0 2px; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--viewer-foreground); font: inherit; text-align: center; }
+.viewer-pagination-page .viewer-page-number:hover { border-color: var(--viewer-border); }
+.viewer-pagination-page .viewer-page-number:focus { border-color: var(--viewer-accent); background: var(--viewer-surface); }
 .viewer-pagination-size { display: flex; justify-self: end; align-items: center; gap: 8px; }
 .viewer-pagination-controls label { white-space: nowrap; font-size: 12px; }
 .viewer-pagination-controls select { width: 64px; font-size: 12px; padding-inline: 6px; }

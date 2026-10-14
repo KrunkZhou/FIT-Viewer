@@ -8,10 +8,12 @@ import { activity } from "../tests/fixtures";
 import {
   checkAppInformation,
   checkDesktopSelection,
+  checkDesktopNotifications,
   checkRenderer,
 } from "./smoke-renderer";
 import { OpenFiles } from "./open-files";
 import { desktopUpdates } from "./updates";
+import { desktopPrompts } from "./prompts";
 
 const profile = resolve(".cache/electron-smoke-profile");
 mkdirSync(profile, { recursive: true });
@@ -28,7 +30,8 @@ app
   .whenReady()
   .then(async () => {
     const files = new OpenFiles();
-    const updates = await desktopUpdates();
+    const notifications = desktopPrompts();
+    const updates = await desktopUpdates(notifications);
     const first = resolve(".cache/desktop-first.fit");
     const second = resolve(".cache/desktop-second.fit");
     await writeFile(first, activity(32));
@@ -40,6 +43,7 @@ app
       resolve("desktop/preload.cjs"),
       (window) => {
         files.attach(window);
+        notifications.attach(window);
         updates.attach(window);
       },
     );
@@ -51,6 +55,17 @@ app
     const info = await window.webContents.executeJavaScript(
       `(${checkAppInformation.toString()})(${JSON.stringify(metadata.version)})`,
     );
+    // Synthetic offers exercise the production IPC/UI without changing Windows defaults or installing an update.
+    const updateAnswer = notifications.show({
+      kind: "install",
+      version: "1.2.3",
+    });
+    const associationAnswer = notifications.show({ kind: "association" });
+    const prompts = await window.webContents.executeJavaScript(
+      `(${checkDesktopNotifications.toString()})()`,
+    );
+    assert.equal(await updateAnswer, false);
+    assert.equal(await associationAnswer, false);
     await window.webContents.executeJavaScript(
       `(${checkRenderer.toString()})()`,
     );
@@ -73,7 +88,7 @@ app
     const image = await window.webContents.capturePage();
     await writeFile(".cache/electron-smoke.png", image.toPNG());
     console.log(
-      `Desktop smoke passed: ${JSON.stringify({ ...result, initial, replacement, info })}`,
+      `Desktop smoke passed: ${JSON.stringify({ ...result, initial, replacement, info, prompts })}`,
     );
     clearTimeout(timeout);
     window.destroy();

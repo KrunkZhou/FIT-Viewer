@@ -24,6 +24,8 @@ test("loading icons have accessible status labels and decorative SVGs", () => {
 test("charts show an initial spinner instead of a premature empty state", () => {
   const markup = renderToStaticMarkup(
     createElement(Charts, {
+      dates: {},
+      onDatesChange() {},
       client: new DocumentClient(),
       developer: false,
       download() {},
@@ -34,4 +36,8 @@ test("charts show an initial spinner instead of a premature empty state", () => 
   assert.ok(markup.includes('aria-busy="true"'));
   assert.ok(!markup.includes("No sensors selected."));
   assert.ok(markup.includes("viewer-chart-plots"));
+  assert.match(
+    markup,
+    /<button(?=[^>]*role="switch")(?=[^>]*aria-label="Sync time")(?=[^>]*aria-checked="false")[^>]*>/,
+  );
 });
