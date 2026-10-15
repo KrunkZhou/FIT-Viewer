@@ -180,17 +180,19 @@ export async function checkRenderer(bytes?: number[]) {
 
 export async function checkMapTimeline() {
   document.getElementById("tab-map")!.click();
-  const waitFor = async (predicate: () => boolean) => {
+  const waitFor = async (predicate: () => boolean, stage: string) => {
     const deadline = performance.now() + 5000;
     while (!predicate()) {
       if (performance.now() > deadline)
-        throw new Error("Map timeline smoke timed out");
+        throw new Error(
+          `Map timeline smoke timed out waiting for ${stage} (document focused: ${document.hasFocus()}, active control: ${document.activeElement?.getAttribute("aria-label")})`,
+        );
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
   };
   const button = (label: string) =>
     document.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`);
-  await waitFor(() => !!button("Hide GPS timeline"));
+  await waitFor(() => !!button("Hide GPS timeline"), "timeline controls");
   const container = document.querySelector<HTMLElement>(".leaflet-container")!;
   const dock = document.querySelector<HTMLElement>(
     ".viewer-map-playback-dock",
@@ -255,11 +257,14 @@ export async function checkMapTimeline() {
     );
   if (document.activeElement !== show)
     throw new Error("Timeline restore button did not receive focus");
+  // Hidden windows can update activeElement without emitting focus events.
+  if (!document.hasFocus())
+    show.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
   const tooltip = () =>
     Array.from(document.querySelectorAll<HTMLElement>('[role="tooltip"]')).find(
       (element) => element.textContent === "Show the GPS timeline",
     );
-  await waitFor(() => !!tooltip());
+  await waitFor(() => !!tooltip(), "restore tooltip");
   const tip = tooltip()!.getBoundingClientRect();
   if (tip.left > rect.right || tip.right < rect.left || tip.bottom > rect.top)
     throw new Error("Timeline restore tooltip is detached from its button");
@@ -285,7 +290,7 @@ export async function checkDesktopSelection(name: string, sources: number) {
   if (
     !window.fitDesktop ||
     Object.keys(window.fitDesktop).sort().join(",") !==
-      "onOpen,prompts,release,updates"
+      "discardAndClose,onBeforeClose,onOpen,prompts,release,updates"
   )
     throw new Error("Desktop preload API is missing or overly broad");
   if (!document.querySelector("input[webkitdirectory]"))

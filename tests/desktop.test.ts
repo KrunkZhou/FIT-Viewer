@@ -196,3 +196,60 @@ test("desktop smoke rejects a table whose worker never supplies rows", async () 
   await assert.rejects(renderer.run(), /20 populated message rows/);
   assert.equal(renderer.polls().chartPolls, 0);
 });
+
+test("desktop selection smoke accepts the close-confirmation bridge and rejects missing or extra APIs", async () => {
+  const { code } = transformSync(
+    readFileSync(
+      new URL("../electron/smoke-renderer.ts", import.meta.url),
+      "utf8",
+    ),
+    {
+      loader: "ts",
+      format: "iife",
+      globalName: "DesktopSmoke",
+      target: "es2022",
+    },
+  );
+  const checkSelection = runInNewContext(
+    `${code}\nDesktopSmoke.checkDesktopSelection.toString()`,
+  );
+  const desktop = {
+    onOpen() {},
+    release() {},
+    onBeforeClose() {},
+    discardAndClose() {},
+    prompts: {},
+    updates: {},
+  };
+  const run = (fitDesktop: Record<string, unknown>) =>
+    runInNewContext(`(${checkSelection})("activity.fit", 1)`, {
+      window: { fitDesktop },
+      document: {
+        body: { textContent: "File overview" },
+        querySelector(selector: string) {
+          if (selector === ".viewer-file h2")
+            return { textContent: "activity.fit" };
+          if (selector === "input[webkitdirectory]") return {};
+          if (selector === 'link[rel="icon"]')
+            return { href: "fitviewer://app/icons/icon-32.png" };
+          return null;
+        },
+        querySelectorAll: () => [],
+      },
+      performance: { now: () => 0 },
+      fetch: async () => ({ ok: true }),
+    });
+  assert.equal((await run(desktop)).folderPicker, true);
+  for (const key of Object.keys(desktop)) {
+    const missing: Record<string, unknown> = { ...desktop };
+    delete missing[key];
+    await assert.rejects(
+      run(missing),
+      /Desktop preload API is missing or overly broad/,
+    );
+  }
+  await assert.rejects(
+    run({ ...desktop, require() {} }),
+    /Desktop preload API is missing or overly broad/,
+  );
+});
