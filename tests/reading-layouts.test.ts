@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { FitDocument } from "../src/document/document";
+import { NumericReader } from "../src/document/numeric-reader";
 import { wrapBody } from "../src/protocol/writer";
 import { data, definition, join, type Field } from "./fixtures";
 
@@ -30,6 +31,17 @@ test("cached record layouts preserve middle timestamps, endian redefinitions and
     document.index.records.map((r) => r.timestamp),
     [30, 31, 100, 101],
   );
+  const keys = ["0", "3", "253"];
+  for (const developer of [false, true]) {
+    const reader = new NumericReader(document, keys, developer);
+    for (const id of [0, 1, 2, 3]) {
+      const cells = document.cells(id, !developer);
+      assert.deepEqual(
+        reader.read(id),
+        keys.map((key) => cells[key]),
+      );
+    }
+  }
   for (const id of [0, 1, 2, 3]) {
     const all = document.cells(id);
     const record = document.index.records[id];
@@ -43,5 +55,6 @@ test("cached record layouts preserve middle timestamps, endian redefinitions and
       });
     }
   }
-  assert.deepEqual(document.index.bytes, bytes);
+  assert.deepEqual(document.index.bytes.subarray(), bytes);
+  assert.equal(document.index.bytes.subarray().buffer, bytes.buffer);
 });

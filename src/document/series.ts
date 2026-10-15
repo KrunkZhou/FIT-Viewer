@@ -18,12 +18,18 @@ import {
   motionPoints,
   motionStatistics,
 } from "./motion";
-import { SampleStatistics } from "./sample-statistics";
+import { SampleStatistics, sampleStatistics } from "./sample-statistics";
 import { positionCoordinates, positionFields } from "./positions";
 import type { MapPlaybackIndex } from "./map-playback";
 import { chartPointBudget } from "./chart-sampling";
+import { NumericReader } from "./numeric-reader";
+import { PointSampler } from "./point-sampler";
+import { recordTimeSpans } from "./record-time-index";
 
+const candidatesByDocument = new WeakMap<FitDocument, Map<boolean, Sensor[]>>();
 export function sensors(document: FitDocument, developer: boolean): Sensor[] {
+  const cached = candidatesByDocument.get(document)?.get(developer);
+  if (cached) return cached;
   const output: Sensor[] = [];
   for (const message of document.messageInfo) {
     if (!message.known && !developer) continue;
@@ -66,6 +72,9 @@ export function sensors(document: FitDocument, developer: boolean): Sensor[] {
       }
     }
   }
+  let modes = candidatesByDocument.get(document);
+  if (!modes) candidatesByDocument.set(document, (modes = new Map()));
+  modes.set(developer, output);
   return output;
 }
 
@@ -76,16 +85,21 @@ export async function chartSensors(
   document: FitDocument,
   developer: boolean,
   job = idleJob(),
+  keys?: readonly string[],
 ): Promise<Sensor[]> {
   const cached = sensorInventories.get(document)?.get(developer);
   if (cached) return cached;
-  const candidates = sensors(document, developer);
-  const statistics = new Map<string, SampleStatistics>();
+  const requested = keys && new Set(keys);
+  const candidates = sensors(document, developer).filter(
+    (sensor) => !requested || requested.has(sensor.key),
+  );
+  const statistics = sampleStatistics(document, developer);
   const groups = new Map<
     string,
     { message: number; source?: number; fields: Sensor[] }
   >();
   for (const sensor of candidates) {
+    if (statistics.has(sensor.key)) continue;
     const message = sensor.message!;
     const key = `${message}:${sensor.source ?? "all"}:${isMotionSensor(sensor)}`;
     const group = groups.get(key) ?? {
@@ -103,17 +117,20 @@ export async function chartSensors(
       continue;
     }
     const counts = fields.map(() => new SampleStatistics());
-    const keys = new Set(fields.map((field) => field.field!));
+    const reader = new NumericReader(
+      document,
+      fields.map((field) => field.field!),
+      developer,
+    );
     let index = 0;
     const ids = document.recordIds(message, source);
     for (const id of ids) {
       const record = document.index.records[id];
-      const cells = document.cells(id, !developer, keys);
+      const cells = reader.read(id);
       for (let field = 0; field < fields.length; field++) {
         const sensor = fields[field];
         if (sensor.axis === "time" && record.timestamp === undefined) continue;
-        const key = sensor.field!;
-        const cell = cells[key];
+        const cell = cells[field];
         if (!cell) continue;
         const value = cell[developer ? "raw" : "value"];
         const samples = Array.isArray(value) ? value : [value];
@@ -129,8 +146,8 @@ export async function chartSensors(
         await job.yield();
       }
     }
-    fields.forEach((field, i) => statistics.set(field.key, counts[i]));
     await job.yield();
+    fields.forEach((field, i) => statistics.set(field.key, counts[i]));
   }
   const output = candidates.flatMap((sensor) => {
     const stats = statistics.get(sensor.key)!;
@@ -141,59 +158,8 @@ export async function chartSensors(
   await job.yield();
   let modes = sensorInventories.get(document);
   if (!modes) sensorInventories.set(document, (modes = new Map()));
-  modes.set(developer, output);
+  if (!keys) modes.set(developer, output);
   return output;
-}
-
-function* sampledPoints(
-  points: ChartPoint[],
-  width: number,
-  detail?: ChartDetail,
-): Generator<ChartPoint | undefined> {
-  const capacity = chartPointBudget(width, detail);
-  if (points.length <= capacity) {
-    yield* points;
-    return;
-  }
-  const size = Math.max(
-    1,
-    Math.ceil(points.length / Math.max(1, Math.floor(capacity / 8))),
-  );
-  let previous = -1;
-  for (let start = 0; start < points.length; start += size) {
-    const end = Math.min(points.length, start + size);
-    let min = -1;
-    let max = -1;
-    for (let i = start; i < end; i++) {
-      if (i % 8192 === 0) yield undefined;
-      if (points[i].value === null) {
-        continue;
-      }
-      if (min === -1 || points[i].value! < points[min].value!) min = i;
-      if (max === -1 || points[i].value! > points[max].value!) max = i;
-    }
-    const candidates = new Set(
-      [start, end - 1, min, max].filter((i) => i >= 0),
-    );
-    for (const i of Array.from(candidates).sort((a, b) => a - b)) {
-      // Never join retained extrema across a gap discarded by a bucket.
-      if (
-        previous >= 0 &&
-        points[previous].value !== null &&
-        points[i].value !== null
-      ) {
-        for (let cursor = previous + 1; cursor < i; cursor++) {
-          if (cursor % 8192 === 0) yield undefined;
-          if (points[cursor].value === null) {
-            yield points[cursor];
-            break;
-          }
-        }
-      }
-      yield points[i];
-      previous = i;
-    }
-  }
 }
 
 export function downsample(
@@ -201,23 +167,9 @@ export function downsample(
   width: number,
   detail?: ChartDetail,
 ): ChartPoint[] {
-  return Array.from(sampledPoints(points, width, detail)).filter(
-    (point): point is ChartPoint => point !== undefined,
-  );
-}
-
-async function scheduledDownsample(
-  points: ChartPoint[],
-  width: number,
-  job: Job,
-  detail?: ChartDetail,
-): Promise<ChartPoint[]> {
-  const output: ChartPoint[] = [];
-  for (const point of sampledPoints(points, width, detail)) {
-    if (point === undefined) await job.yield();
-    else output.push(point);
-  }
-  return output;
+  const sampler = new PointSampler(chartPointBudget(width, detail));
+  for (const point of points) sampler.add(point);
+  return sampler.finish();
 }
 
 export async function* chartPoints(
@@ -225,6 +177,7 @@ export async function* chartPoints(
   sensor: Sensor,
   developer: boolean,
   job: Job,
+  range?: TimeRange,
 ): AsyncGenerator<ChartPoint> {
   if (isMotionSensor(sensor)) {
     yield* motionPoints(document, sensor, developer, job);
@@ -232,7 +185,7 @@ export async function* chartPoints(
   }
   const [message, ...parts] = sensor.key.split(":");
   const field = sensor.field ?? parts.join(":");
-  const keys = new Set([field]);
+  const reader = new NumericReader(document, [field], developer);
   const ids = document.recordIds(
     sensor.message ?? Number(message),
     sensor.source,
@@ -240,32 +193,54 @@ export async function* chartPoints(
   let sample = 0;
   let file = -1;
   let previous: number | undefined;
-  for (let i = 0; i < ids.length; i++) {
-    const record = document.index.records[ids[i]];
-    const cell = document.cells(ids[i], !developer, keys)[field];
-    const value = cell?.[developer ? "raw" : "value"] ?? null;
-    const values = Array.isArray(value) ? value : [value];
-    const t = sensor.axis === "sample" ? sample : record.timestamp;
-    if (
-      t !== undefined &&
-      previous !== undefined &&
-      (file !== record.subfile ||
-        (sensor.axis !== "sample" && t - previous > 10))
-    )
-      yield { time: t, value: null };
-    for (const v of values) {
-      const time = sensor.axis === "sample" ? sample++ : record.timestamp;
-      if (time !== undefined)
-        yield {
-          time,
-          value: typeof v === "number" && Number.isFinite(v) ? v : null,
-        };
-    }
-    file = record.subfile;
-    previous = t;
-    if (i % 512 === 0) {
-      job.progress(i, ids.length, "Preparing chart data");
-      await job.yield();
+  let excluded = false;
+  let emitted = false;
+  const spans =
+    sensor.axis === "time"
+      ? await recordTimeSpans(document, ids, range, job)
+      : [[0, ids.length]];
+  for (const [from, to] of spans) {
+    if (from > 0) excluded = true;
+    for (let i = from; i < to; i++) {
+      if (i % 512 === 0) {
+        job.progress(i, ids.length, "Preparing chart data");
+        await job.yield();
+      }
+      const record = document.index.records[ids[i]];
+      if (sensor.axis === "time") {
+        previous = i ? document.index.records[ids[i - 1]].timestamp : undefined;
+        file = i ? document.index.records[ids[i - 1]].subfile : -1;
+        if (!inTimeRange(record.timestamp, range)) {
+          excluded = true;
+          continue;
+        }
+      }
+      const cell = reader.read(ids[i])[0];
+      const value = cell?.[developer ? "raw" : "value"] ?? null;
+      const values = Array.isArray(value) ? value : [value];
+      const t = sensor.axis === "sample" ? sample : record.timestamp;
+      if (excluded && emitted && t !== undefined)
+        yield { time: t, value: null };
+      excluded = false;
+      if (
+        t !== undefined &&
+        previous !== undefined &&
+        (file !== record.subfile ||
+          (sensor.axis !== "sample" && t - previous > 10))
+      )
+        yield { time: t, value: null };
+      for (const v of values) {
+        const time = sensor.axis === "sample" ? sample++ : record.timestamp;
+        if (time !== undefined) {
+          yield {
+            time,
+            value: typeof v === "number" && Number.isFinite(v) ? v : null,
+          };
+          emitted = true;
+        }
+      }
+      file = record.subfile;
+      previous = t;
     }
   }
 }
@@ -276,19 +251,41 @@ export async function chart(
   job = idleJob(),
   full = false,
 ): Promise<ChartData> {
-  const available = await chartSensors(document, query.developer, job);
+  const requestedMotion = sensors(document, query.developer).filter(
+    (sensor) => query.sensors.includes(sensor.key) && isMotionSensor(sensor),
+  );
+  const statistics = sampleStatistics(document, query.developer);
+  // A first unfiltered motion chart can collect its full-resolution statistics
+  // in the same pass as the display envelope. Later inventory scans reuse them.
+  const prepared =
+    !full &&
+    query.start === undefined &&
+    query.end === undefined &&
+    !hasTimeRange(query.dates) &&
+    requestedMotion.some((sensor) => !statistics.has(sensor.key))
+      ? await motionChart(document, requestedMotion, query, job)
+      : undefined;
+  const available = await chartSensors(
+    document,
+    query.developer,
+    job,
+    query.sensors.length ? query.sensors : undefined,
+  );
   const selected = available.filter((s) => query.sensors.includes(s.key));
   const series: ChartData["series"] = {};
   let start = Infinity;
   let end = -Infinity;
   const motion = selected.filter(isMotionSensor);
   if (motion.length && !full) {
-    const data = await motionChart(
-      document,
-      motion,
-      { ...query, ...intersectTimeRanges(query, query.dates) },
-      job,
-    );
+    const data =
+      prepared && motion.length === requestedMotion.length
+        ? prepared
+        : await motionChart(
+            document,
+            motion,
+            { ...query, ...intersectTimeRanges(query, query.dates) },
+            job,
+          );
     Object.assign(series, data.series);
     start = data.start;
     end = data.end;
@@ -299,6 +296,17 @@ export async function chart(
     : await displayWidths(document, ordinary, query, job);
   for (const sensor of ordinary) {
     const points: ChartPoint[] = [];
+    const sampler = full
+      ? undefined
+      : new PointSampler(
+          chartPointBudget(widths.get(sensor.key) ?? query.width, query.detail),
+        );
+    let accepted = false;
+    const add = (point: ChartPoint) => {
+      accepted = true;
+      if (sampler) sampler.add(point);
+      else points.push(point);
+    };
     let excluded = false;
     if (sensor.axis === "sample" && hasTimeRange(query.dates)) {
       series[sensor.key] = points;
@@ -309,6 +317,10 @@ export async function chart(
       sensor,
       query.developer,
       job,
+      {
+        ...intersectTimeRanges(query, query.dates),
+        intervals: query.dates?.intervals,
+      },
     )) {
       const { time } = point;
       if (
@@ -319,7 +331,7 @@ export async function chart(
         excluded = true;
         continue;
       }
-      if (excluded && points.length) points.push({ time, value: null });
+      if (excluded && accepted) add({ time, value: null });
       excluded = false;
       let numeric = point.value;
       if (
@@ -328,18 +340,11 @@ export async function chart(
           (query.filter?.max !== undefined && numeric > query.filter.max))
       )
         numeric = null;
-      points.push({ time, value: numeric });
+      add({ time, value: numeric });
       start = Math.min(start, time);
       end = Math.max(end, time);
     }
-    series[sensor.key] = full
-      ? points
-      : await scheduledDownsample(
-          points,
-          widths.get(sensor.key) ?? query.width,
-          job,
-          query.detail,
-        );
+    series[sensor.key] = sampler ? sampler.finish() : points;
   }
   return {
     sensors: available,
@@ -478,25 +483,34 @@ export async function* mapPositions(
       name?: number;
       timestamp?: number;
       keys: Set<string>;
+      numericKeys: string[];
+      reader: NumericReader;
     }
   >();
   for (const definition of document.index.definitions) {
     const info = positionFields(definition.message);
-    if (info)
+    if (info && !fields.has(definition.message)) {
+      const keys = new Set(
+        [
+          info.latitude,
+          info.longitude,
+          info.timestamp,
+          info.name,
+          ...(definition.message === 20 ? [78, 2, 5] : []),
+        ]
+          .filter((id) => id !== undefined)
+          .map(String),
+      );
+      const numericKeys = [...keys].filter(
+        (key) => key !== String(info.timestamp),
+      );
       fields.set(definition.message, {
         ...info,
-        keys: new Set(
-          [
-            info.latitude,
-            info.longitude,
-            info.timestamp,
-            info.name,
-            ...(definition.message === 20 ? [78, 2, 5] : []),
-          ]
-            .filter((id) => id !== undefined)
-            .map(String),
-        ),
+        keys,
+        numericKeys,
+        reader: new NumericReader(document, numericKeys, false),
       });
+    }
   }
   for (let id = 0; id < document.index.records.length; id++) {
     if (id % 512 === 0) {
@@ -506,7 +520,25 @@ export async function* mapPositions(
     const record = document.index.records[id];
     const info = fields.get(record.definition.message);
     if (!info) continue;
-    const cells = document.cells(id, true, info.keys);
+    // Most GPS records carry an indexed timestamp; reject offscreen dates
+    // before decoding coordinates, elevation or unrelated values.
+    if (
+      record.timestamp !== undefined &&
+      !inTimeRange(record.timestamp, dates)
+    ) {
+      if (record.definition.message === 20) {
+        previous = undefined;
+        missingGps = false;
+      }
+      yield { message: record.definition.message, subfile: record.subfile };
+      continue;
+    }
+    const cells =
+      record.timestamp === undefined
+        ? document.cells(id, true, info.keys)
+        : Object.fromEntries(
+            info.reader.read(id).map((cell, i) => [info.numericKeys[i], cell]),
+          );
     const timestamp =
       info.timestamp === undefined
         ? undefined

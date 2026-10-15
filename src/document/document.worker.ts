@@ -8,6 +8,7 @@ import { ChartCache } from "./chart-cache";
 import { exportDocument } from "../export/export";
 import { addSummaryDiagnostics } from "../repair/repair";
 import { MapPlaybackIndex } from "./map-playback";
+import { sensors } from "./series";
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
 let document: FitDocument | undefined;
@@ -107,6 +108,9 @@ scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         break;
       case "chart":
         result = await charts.query(current!, request.query, job);
+        break;
+      case "sensor-candidates":
+        result = sensors(current!, request.developer);
         break;
       case "map": {
         latestMapRequest = request.requestId;

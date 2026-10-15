@@ -7,6 +7,8 @@ declare global {
     fitDesktop?: {
       onOpen: (callback: (selection: FileSet) => void) => () => void;
       release: (urls: string[]) => void;
+      onBeforeClose: (callback: () => void) => () => void;
+      discardAndClose: () => void;
       updates: DesktopUpdates;
       prompts: DesktopPromptsApi;
     };

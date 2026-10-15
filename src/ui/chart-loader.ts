@@ -48,8 +48,8 @@ export class ChartGroupLoader {
     this.selected = [...new Set(queries.map(chartQueryKey))];
     const selected = new Set(this.selected);
     for (const [key, entry] of this.entries) {
-      if (selected.has(key) || !entry.controller) continue;
-      entry.controller.abort();
+      if (selected.has(key) || (!entry.controller && !entry.error)) continue;
+      entry.controller?.abort();
       this.running.delete(entry);
       this.entries.delete(key);
     }
@@ -61,6 +61,16 @@ export class ChartGroupLoader {
     }
     this.publish();
     this.trim();
+    this.pump();
+  }
+
+  retry(): void {
+    if (this.disposed) return;
+    for (const key of this.selected) {
+      const entry = this.entries.get(key);
+      if (entry) entry.error = undefined;
+    }
+    this.publish();
     this.pump();
   }
 

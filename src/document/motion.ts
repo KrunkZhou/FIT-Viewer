@@ -10,7 +10,7 @@ import type {
 } from "../model";
 import { readValue, valid, WIDTHS } from "../protocol/binary";
 import type { FitDocument } from "./document";
-import { SampleStatistics } from "./sample-statistics";
+import { SampleStatistics, sampleStatistics } from "./sample-statistics";
 import { hasTimeRange, inTimeRange } from "./time-range";
 import { chartPointBudget } from "./chart-sampling";
 
@@ -48,9 +48,10 @@ function values(
   interpretation?: { scale?: number; offset?: number },
 ): (number | null)[] {
   if (!location) return [];
+  const segment = document.index.bytes.segment(record.offset);
   const raw = readValue(
-    document.index.view,
-    record.offset + location.offset,
+    segment.view,
+    record.offset - segment.start + location.offset,
     location.wire,
     record.definition.littleEndian,
   );
@@ -150,6 +151,11 @@ export async function motionStatistics(
   developer: boolean,
   job: Job,
 ): Promise<SampleStatistics[]> {
+  const cached = sampleStatistics(document, developer);
+  const requested = sensors;
+  sensors = sensors.filter((sensor) => !cached.has(sensor.key));
+  if (!sensors.length)
+    return requested.map((sensor) => cached.get(sensor.key)!);
   const first = sensors[0];
   const message = first.message ?? Number(first.key.split(":")[0]);
   const inventory = document.getFields(message, developer, first.source);
@@ -177,7 +183,8 @@ export async function motionStatistics(
     }
   }
   await job.yield();
-  return statistics;
+  sensors.forEach((sensor, i) => cached.set(sensor.key, statistics[i]));
+  return requested.map((sensor) => cached.get(sensor.key)!);
 }
 export async function* motionPoints(
   document: FitDocument,
@@ -409,6 +416,14 @@ export async function motionChart(
       count <= sharedCapacity ? 1 : Math.max(1, Math.ceil(count / buckets));
     const envelope = new Envelope(size, fields.length, query.filter);
     const timeline = new Timeline();
+    const cached = sampleStatistics(document, query.developer);
+    const countAll =
+      query.start === undefined &&
+      query.end === undefined &&
+      !hasTimeRange(query.dates);
+    const statistics = chosen.map((sensor) =>
+      countAll && !cached.has(sensor.key) ? new SampleStatistics() : undefined,
+    );
     let excluded = false;
     let index = 0;
     for (const packet of packets(
@@ -421,6 +436,9 @@ export async function motionChart(
     )) {
       for (let sample = 0; sample < packet.times.length; sample++) {
         const time = packet.times[sample];
+        if (time !== undefined)
+          for (let axis = 0; axis < statistics.length; axis++)
+            statistics[axis]?.add(packet.axes[axis]?.[sample]);
         const gap = timeline.next(time, packet.subfile);
         if (
           time === undefined ||
@@ -447,6 +465,10 @@ export async function motionChart(
     // Keep the union of every axis's extrema, with exact companion values from
     // the same source sample. Independent timestamps leave XYZ tooltips sparse.
     const retained = envelope.finish();
+    await job.yield();
+    chosen.forEach((sensor, axis) => {
+      if (statistics[axis]) cached.set(sensor.key, statistics[axis]!);
+    });
     chosen.forEach((sensor, axis) => {
       series[sensor.key] = retained.map((sample) => ({
         time: sample.time,

@@ -253,6 +253,7 @@ export type RequestPayload = (
   | { kind: "summary" }
   | { kind: "table"; query: TableQuery }
   | { kind: "singletons"; developer: boolean }
+  | { kind: "sensor-candidates"; developer: boolean }
   | { kind: "chart"; query: ChartQuery }
   | { kind: "map"; dates?: TimeRange }
   | { kind: "map-position"; mapId: number; time: number; routes: number[] }
@@ -274,6 +275,7 @@ export type WorkerResponsePayload =
         | SingleEntryView
         | DiagnosticPage
         | ChartData
+        | Sensor[]
         | MapData
         | MapPlaybackPosition
         | ExportResult

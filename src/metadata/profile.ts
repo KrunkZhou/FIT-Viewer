@@ -146,6 +146,24 @@ export class Metadata {
       descriptions?.[0]
     );
   }
+  staticField(
+    record: RecordRef,
+    wire: WireField,
+  ): { info: FieldInfo; array: boolean } | undefined {
+    if (wire.developer !== undefined) return;
+    this.field(record, wire, {});
+    const info = this.fieldCache
+      .get(record.definition)
+      ?.get(`fixed:${fieldKey(wire)}:${wire.type}:${wire.size}`);
+    if (!info) return;
+    return {
+      info,
+      array: Boolean(
+        Profile.messages[record.definition.message]?.fields[wire.id]?.array ??
+        this.garminField(record, wire)?.array,
+      ),
+    };
+  }
   raw(
     record: RecordRef,
     selected?: ReadonlySet<string>,
@@ -178,6 +196,7 @@ export class Metadata {
       modes.set(record.compressed, layout);
     }
     const result: Record<string, RawValue> = {};
+    const segment = this.index.bytes.segment(record.offset);
     for (const { field, key, offset, array: nativeArray } of layout) {
       if (selected && !selected.has(key)) continue;
       const developer =
@@ -189,8 +208,8 @@ export class Metadata {
           ? field.type
           : (developer?.type ?? field.type);
       const value = readValue(
-        this.index.view,
-        record.offset + offset,
+        segment.view,
+        record.offset - segment.start + offset,
         type === field.type ? field : { ...field, type },
         record.definition.littleEndian,
       );
@@ -421,8 +440,11 @@ export class Metadata {
           ? value
           : fixedBigInt(value, info.scale ?? 1, info.offset ?? 0);
       if (value === null) return null;
-      if (info.type === "dateTime" || info.type === "localDateTime")
-        return new Date(FIT_EPOCH + value * 1000).toISOString();
+      if (info.type === "dateTime" || info.type === "localDateTime") {
+        const text = new Date(FIT_EPOCH + value * 1000).toISOString();
+        // FIT local_date_time is a wall-clock value, not a UTC instant.
+        return info.type === "localDateTime" ? text.slice(0, -1) : text;
+      }
       if (info.bitmask) {
         let remaining = BigInt(Math.trunc(value));
         const labels: string[] = [];

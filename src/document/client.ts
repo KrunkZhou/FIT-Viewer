@@ -16,6 +16,7 @@ import {
   validationValue,
   validationWorker,
   validationChartRequest,
+  validationMapRequest,
 } from "./validation";
 
 interface Pending {
@@ -148,6 +149,7 @@ export class DocumentClient {
       return Promise.reject(new DOMException("Cancelled", "AbortError"));
     const requestId = this.nextRequest++;
     if (payload.kind === "chart") validationChartRequest();
+    if (payload.kind === "map") validationMapRequest();
     const started = performance.now();
     return new Promise<T>((resolve, reject) => {
       const abort = () => {

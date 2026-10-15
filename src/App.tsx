@@ -37,6 +37,7 @@ import type { DocumentSummary, ExportQuery, TimeRange } from "./model";
 import { ControlTooltip } from "./ui/ControlTooltip";
 import { Overview } from "./ui/Overview";
 import { CiqSettings } from "./ui/CiqSettings";
+import { CiqDraftStore } from "./ui/ciq-drafts";
 import { Messages } from "./ui/Messages";
 import { Diagnostics } from "./ui/Diagnostics";
 import {
@@ -95,6 +96,11 @@ export function documentTabs(summary?: DocumentSummary) {
 export default function App() {
   const desktop = typeof window === "undefined" ? undefined : window.fitDesktop;
   const client = useMemo(() => new DocumentClient(), []);
+  const drafts = useMemo(() => new CiqDraftStore(), []);
+  const [discardPrompt, setDiscardPrompt] = useState(false);
+  const discardDecision = useRef<((accepted: boolean) => void) | undefined>(
+    undefined,
+  );
   const [summary, setSummary] = useState<DocumentSummary>();
   const [selectedName, setSelectedName] = useState<string>();
   const [workspace, setWorkspace] = useState<DocumentSummary>();
@@ -142,9 +148,39 @@ export default function App() {
       job.current?.abort();
       client.destroy();
       downloads.current.clear();
+      discardDecision.current?.(false);
     },
     [client],
   );
+  function confirmDiscard(): Promise<boolean> {
+    discardDecision.current?.(false);
+    setDiscardPrompt(true);
+    return new Promise((resolve) => {
+      discardDecision.current = resolve;
+    });
+  }
+  function decideDiscard(accepted: boolean) {
+    const resolve = discardDecision.current;
+    discardDecision.current = undefined;
+    setDiscardPrompt(false);
+    resolve?.(accepted);
+  }
+  useEffect(() => {
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (!drafts.hasChanges()) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    const unsubscribe = window.fitDesktop?.onBeforeClose(async () => {
+      if (!drafts.hasChanges() || (await confirmDiscard()))
+        window.fitDesktop?.discardAndClose();
+    });
+    return () => {
+      window.removeEventListener("beforeunload", beforeUnload);
+      unsubscribe?.();
+    };
+  }, [drafts]);
   useEffect(() => {
     setVisited((previous) =>
       previous.includes(tab) ? previous : [...previous, tab],
@@ -161,6 +197,14 @@ export default function App() {
       | DocumentInput
       | ((signal: AbortSignal, limit: number) => Promise<DocumentInput>),
   ) {
+    if (drafts.hasChanges() && !(await confirmDiscard())) {
+      if (typeof input !== "function" && "files" in input)
+        window.fitDesktop?.release(
+          input.files.flatMap((file) => ("url" in file ? [file.url] : [])),
+        );
+      return;
+    }
+    drafts.clear();
     const id = ++generation.current;
     job.current?.abort();
     client.destroy();
@@ -337,13 +381,19 @@ export default function App() {
       )}
       {summary.ciqSettings?.length && visited.includes("settings") ? (
         <div className="section-view" hidden={tab !== "settings"}>
-          <CiqSettings files={summary.ciqSettings} download={download} />
+          <CiqSettings
+            files={summary.ciqSettings}
+            download={download}
+            store={drafts}
+            source={source === "" ? undefined : Number(source)}
+          />
         </div>
       ) : null}
       {summary.hasMap && visited.includes("map") && (
         <div className="section-view" hidden={tab !== "map"}>
           <ActivityMap
             client={client}
+            active={tab === "map"}
             availableDates={summary.availableDates}
             download={download}
             dates={dates}
@@ -397,11 +447,7 @@ export default function App() {
         ) : (
           <Upload size={36} />
         )}
-        <span>
-          {busy
-            ? "Opening files..."
-            : "Drop or open FIT files here"}
-        </span>
+        <span>{busy ? "Opening files..." : "Drop or open FIT files here"}</span>
       </button>
     </div>
   );
@@ -669,6 +715,29 @@ export default function App() {
           limit={importLimit}
           onClose={() => setImportLimit(undefined)}
         />
+      )}
+      {discardPrompt && (
+        <Modal
+          title="Discard settings changes?"
+          onClose={() => decideDiscard(false)}
+        >
+          <p>
+            Settings changes have not been saved to the original files. Download
+            the edited SET files before continuing to keep them.
+          </p>
+          <div className="viewer-csv-actions">
+            <button type="button" onClick={() => decideDiscard(false)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="primary"
+              onClick={() => decideDiscard(true)}
+            >
+              Discard changes
+            </button>
+          </div>
+        </Modal>
       )}
       {csvQuery && (
         <Modal

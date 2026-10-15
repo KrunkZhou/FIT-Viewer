@@ -12,6 +12,7 @@
     "bench:rewrite": "tsx scripts/benchmark-rewrite.ts",
     "bench:archive": "tsx scripts/benchmark-archive.ts",
     "bench:loading": "tsx scripts/benchmark-loading.ts",
+    "bench:folder": "node --expose-gc --import tsx scripts/benchmark-folder.ts",
     "bench:motion": "tsx scripts/benchmark-motion.ts",
     "bench:motion:worker": "tsx scripts/benchmark-motion-worker.ts",
     "fixtures": "tsx scripts/generate-fixtures.ts",

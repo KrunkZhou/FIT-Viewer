@@ -7,7 +7,14 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { CheckSquare2, Download, Search, Square, ZoomOut } from "lucide-react";
+import {
+  CheckSquare2,
+  Download,
+  RotateCw,
+  Search,
+  Square,
+  ZoomOut,
+} from "lucide-react";
 import {
   CartesianGrid,
   Customized,
@@ -31,6 +38,7 @@ import type {
 import { DateRangeFilter } from "./DateRangeFilter";
 import type { DocumentClient } from "../document/client";
 import { ChartGroupLoader } from "./chart-loader";
+import { chartSelection, initialCharts } from "./chart-inventory";
 import { ChartPlotCache } from "./chart-plots";
 import { validationChartRender } from "../document/validation";
 import {
@@ -381,6 +389,7 @@ export default function Charts({
   const [inventory, setInventory] = useState<{
     developer: boolean;
     sensors: Sensor[];
+    complete: boolean;
   }>();
   const [inventoryLoading, setInventoryLoading] = useState(true);
   const [selected, setSelected] = useState<string[]>(
@@ -422,6 +431,7 @@ export default function Charts({
   const queryWidth =
     width === undefined ? undefined : Math.ceil(width / 128) * 128;
   const [inventoryError, setInventoryError] = useState("");
+  const [inventoryAttempt, setInventoryAttempt] = useState(0);
   const content = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
   const loader = useMemo(
@@ -485,54 +495,49 @@ export default function Charts({
     setRange({});
   }, [dates]);
   useEffect(() => {
-    if (!active || inventory?.developer === developer) return;
+    if (
+      !active ||
+      queryWidth === undefined ||
+      (inventory?.developer === developer && inventory.complete)
+    )
+      return;
+    const complete = inventory?.developer === developer;
     const controller = new AbortController();
     setInventoryLoading(true);
     setInventoryError("");
-    client
-      .request<ChartData>(
-        {
-          kind: "chart",
-          query: { sensors: [], width: 1, developer },
-        },
-        controller.signal,
-      )
+    const request = complete
+      ? client.request<ChartData>(
+          {
+            kind: "chart",
+            query: { sensors: [], width: 1, developer },
+          },
+          controller.signal,
+        )
+      : initialCharts(
+          client,
+          selected,
+          !initialized.current,
+          {
+            width: queryWidth,
+            developer,
+            detail,
+            ...range,
+            filter,
+            dates,
+          },
+          controller.signal,
+        );
+    request
       .then((next) => {
         if (controller.signal.aborted) return;
-        setInventoryLoading(false);
-        setInventory({ developer, sensors: next.sensors });
+        setInventoryLoading(!complete);
+        setInventory({ developer, sensors: next.sensors, complete });
         setInventoryError("");
-        const nextGroups = groupSensors(next.sensors);
         const initialize = !initialized.current;
-        initialized.current = true;
+        if (complete || next.sensors.length) initialized.current = true;
         setSelected((selected) => {
-          const keep = nextGroups
-            .filter(
-              (group) =>
-                selected.includes(group.sensor.key) ||
-                group.members.some((sensor) => selected.includes(sensor.key)),
-            )
-            .map((group) => group.sensor.key);
-          if (initialize) {
-            const defaults = nextGroups
-              .map((group) => group.sensor)
-              .filter((s) =>
-                ["20:3", "20:6", "20:2"].includes(
-                  `${s.message ?? s.key.split(":")[0]}:${s.field ?? s.key.split(":")[1]}`,
-                ),
-              )
-              .map((s) => s.key);
-            const initial = keep.length
-              ? keep
-              : defaults.length
-                ? defaults
-                : nextGroups.slice(0, 2).map((group) => group.sensor.key);
-            if (
-              initial.length !== selected.length ||
-              initial.some((key, index) => key !== selected[index])
-            )
-              return initial;
-          } else if (
+          const keep = chartSelection(next.sensors, selected, initialize);
+          if (
             keep.length !== selected.length ||
             keep.some((key, index) => key !== selected[index])
           )
@@ -548,7 +553,15 @@ export default function Charts({
         if (!controller.signal.aborted) setInventoryLoading(false);
       });
     return () => controller.abort();
-  }, [client, developer, active, inventory?.developer]);
+  }, [
+    client,
+    developer,
+    active,
+    inventory?.developer,
+    inventory?.complete,
+    inventoryAttempt,
+    queryWidth,
+  ]);
   const queries = useMemo(() => {
     if (queryWidth === undefined || inventory?.developer !== developer)
       return [];
@@ -725,6 +738,16 @@ export default function Charts({
         {error && (
           <p role="alert" className="error">
             {error}
+            <IconButton
+              title="Retry chart loading"
+              tooltip="Retry failed chart requests"
+              onClick={() => {
+                if (inventoryError) setInventoryAttempt((value) => value + 1);
+                loader.retry();
+              }}
+            >
+              <RotateCw size={16} />
+            </IconButton>
           </p>
         )}
         <div className="viewer-loading-region">

@@ -4,6 +4,12 @@ import type { UpdateState } from "../src/updates";
 import type { DesktopPromptState } from "../src/desktop-prompts";
 
 contextBridge.exposeInMainWorld("fitDesktop", {
+  onBeforeClose(callback: () => void) {
+    const listener = () => callback();
+    ipcRenderer.on("files:confirm-close", listener);
+    return () => ipcRenderer.removeListener("files:confirm-close", listener);
+  },
+  discardAndClose: () => ipcRenderer.send("files:discard-close"),
   onOpen(callback: (selection: FileSet) => void) {
     const listener = (_event: unknown, selection: FileSet) =>
       callback(selection);

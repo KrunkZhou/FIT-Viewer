@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState, type HTMLAttributes } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type HTMLAttributes,
+} from "react";
 import { PanelRightClose, PanelRightOpen, Route, Scan } from "lucide-react";
 import {
   CircleMarker,
@@ -78,6 +84,7 @@ function Bounds({ data, recenter }: { data: MapData; recenter: number }) {
 
 export default function ActivityMap({
   client,
+  active = true,
   download,
   dates,
   onDatesChange,
@@ -85,6 +92,7 @@ export default function ActivityMap({
   onGoToData,
 }: {
   client: DocumentClient;
+  active?: boolean;
   download: (query: ExportQuery) => void;
   dates: TimeRange;
   onDatesChange: (dates: TimeRange) => void;
@@ -92,6 +100,10 @@ export default function ActivityMap({
   onGoToData: (record: number) => void;
 }) {
   const [data, setData] = useState<MapData>();
+  const loadedQuery = useRef<
+    { client: DocumentClient; dates: string } | undefined
+  >(undefined);
+  const dateKey = JSON.stringify(dates);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingTiles, setLoadingTiles] = useState(false);
@@ -152,7 +164,14 @@ export default function ActivityMap({
       : (import.meta.env.VITE_MAP_STREET_ATTRIBUTION as string | undefined) ||
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
   useEffect(() => {
+    if (
+      !active ||
+      (loadedQuery.current?.client === client &&
+        loadedQuery.current.dates === dateKey)
+    )
+      return;
     const controller = new AbortController();
+    loadedQuery.current = undefined;
     setLoading(true);
     setError("");
     setData(undefined);
@@ -168,7 +187,10 @@ export default function ActivityMap({
     client
       .request<MapData>({ kind: "map", dates }, controller.signal)
       .then((next) => {
-        if (!controller.signal.aborted) setData(next);
+        if (!controller.signal.aborted) {
+          loadedQuery.current = { client, dates: dateKey };
+          setData(next);
+        }
       })
       .catch((error) => {
         if (!controller.signal.aborted && error.name !== "AbortError")
@@ -178,7 +200,7 @@ export default function ActivityMap({
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [client, dates]);
+  }, [client, dateKey, active]);
   const routeVisible = (route?: number) =>
     route === undefined || !hiddenRoutes.includes(route);
   const routeName = (route: number) =>
@@ -204,6 +226,12 @@ export default function ActivityMap({
       ? COLORS[currentPosition.route % COLORS.length]
       : "var(--viewer-muted)";
   useEffect(() => {
+    if (
+      !active ||
+      loadedQuery.current?.dates !== dateKey ||
+      loadedQuery.current?.client !== client
+    )
+      return;
     if (!data?.playback || cursorTime === undefined || !timeRange) {
       setCurrentPosition(undefined);
       return;
@@ -237,7 +265,7 @@ export default function ActivityMap({
       cancelAnimationFrame(frame);
       controller.abort();
     };
-  }, [client, data?.playback, cursorTime, timeRange]);
+  }, [client, data?.playback, cursorTime, timeRange, active, dateKey]);
   const trackPositions = useMemo(
     () =>
       data?.tracks.map((track) =>

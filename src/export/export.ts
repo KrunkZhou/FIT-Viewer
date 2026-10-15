@@ -111,7 +111,7 @@ export async function exportDocument(
           )
         : [],
     );
-    const dateFormat = new Intl.DateTimeFormat(query.locale, {
+    const dateOptions: Intl.DateTimeFormatOptions = {
       hourCycle: HOUR_CYCLE,
       timeZone: query.timezone,
       year: "numeric",
@@ -120,6 +120,11 @@ export async function exportDocument(
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
+    };
+    const dateFormat = new Intl.DateTimeFormat(query.locale, dateOptions);
+    const wallClockFormat = new Intl.DateTimeFormat(query.locale, {
+      ...dateOptions,
+      timeZone: "UTC",
     });
     const cast = (value: RawValue, info: FieldInfo): string => {
       if (value === null) return "";
@@ -131,7 +136,9 @@ export async function exportDocument(
         typeof value === "string" &&
         query.timeFormat === "localized"
       )
-        return dateFormat.format(new Date(value));
+        return info.type === "localDateTime"
+          ? wallClockFormat.format(new Date(`${value}Z`))
+          : dateFormat.format(new Date(value));
       if (!developer && typeof value === "number") {
         const decimals =
           info.units === "deg" ||

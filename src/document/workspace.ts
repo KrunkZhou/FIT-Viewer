@@ -1,8 +1,9 @@
-import type { CiqSettingsFile, Definition, Job, SourceInfo } from "../model";
+import type { CiqSettingsFile, Job, SourceInfo } from "../model";
 import { type FitIndex, rawRecord, readFit } from "../protocol/reader";
 import { readCiqSettings } from "../protocol/ciq-settings";
 import type { SourceInput } from "./files";
 import { isSetPath } from "./input";
+import { ByteStore } from "../protocol/byte-store";
 
 export async function readWorkspace(
   sources: SourceInput[],
@@ -12,20 +13,10 @@ export async function readWorkspace(
   sources: SourceInfo[];
   ciqSettings: CiqSettingsFile[];
 }> {
-  const bytes = new Uint8Array(
-    sources.reduce((size, source) => size + source.bytes.length, 0),
-  );
+  const bytes = new ByteStore(sources.map((source) => source.bytes));
   let offset = 0;
-  for (const source of sources) {
-    for (let start = 0; start < source.bytes.length; start += 65536) {
-      bytes.set(source.bytes.subarray(start, start + 65536), offset + start);
-      await job.yield();
-    }
-    offset += source.bytes.length;
-  }
   const index: FitIndex = {
     bytes,
-    view: new DataView(bytes.buffer),
     records: [],
     definitions: [],
     messages: new Map(),
@@ -35,7 +26,6 @@ export async function readWorkspace(
   };
   const info: SourceInfo[] = [];
   const ciqSettings: CiqSettingsFile[] = [];
-  offset = 0;
   for (const [id, source] of sources.entries()) {
     const entry: SourceInfo = {
       id,
@@ -81,30 +71,21 @@ export async function readWorkspace(
           bodyEnd: file.bodyEnd + offset,
           end: file.end + offset,
         });
-      const definitions = new Map<Definition, Definition>();
       for (const [i, definition] of parsed.definitions.entries()) {
-        const mapped = {
-          ...definition,
-          offset: definition.offset + offset,
-          end: definition.end + offset,
-          subfile: definition.subfile + fileBase,
-        };
-        definitions.set(definition, mapped);
-        index.definitions.push(mapped);
+        definition.offset += offset;
+        definition.end += offset;
+        definition.subfile += fileBase;
+        index.definitions.push(definition);
         if (i % 1024 === 0) await job.yield();
       }
       for (const [i, record] of parsed.records.entries()) {
-        const mapped = {
-          ...record,
-          definition: definitions.get(record.definition)!,
-          offset: record.offset + offset,
-          end: record.end + offset,
-          subfile: record.subfile + fileBase,
-        };
-        const ids = index.messages.get(mapped.definition.message) ?? [];
+        record.offset += offset;
+        record.end += offset;
+        record.subfile += fileBase;
+        const ids = index.messages.get(record.definition.message) ?? [];
         ids.push(index.records.length);
-        index.messages.set(mapped.definition.message, ids);
-        index.records.push(mapped);
+        index.messages.set(record.definition.message, ids);
+        index.records.push(record);
         if (i % 1024 === 0) await job.yield();
       }
       for (const diagnostic of parsed.diagnostics)

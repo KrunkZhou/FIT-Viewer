@@ -9,10 +9,10 @@ import type {
   WireField,
 } from "../model";
 import { fieldKey, numberValue, readValue, WIDTHS } from "./binary";
+import { ByteStore } from "./byte-store";
 
 export interface FitIndex {
-  bytes: Uint8Array;
-  view: DataView;
+  bytes: ByteStore;
   records: RecordRef[];
   definitions: Definition[];
   messages: Map<number, number[]>;
@@ -27,16 +27,17 @@ export const idleJob = (): Job => ({
 });
 
 export function rawRecord(
-  index: Pick<FitIndex, "view">,
+  index: Pick<FitIndex, "bytes">,
   record: RecordRef,
 ): Record<string, RawValue> {
   const result: Record<string, RawValue> = {};
-  let offset = record.offset + 1;
+  const segment = index.bytes.segment(record.offset);
+  let offset = record.offset - segment.start + 1;
   for (const field of record.definition.fields) {
     if (record.compressed && field.id === 253 && field.developer === undefined)
       continue;
     result[fieldKey(field)] = readValue(
-      index.view,
+      segment.view,
       offset,
       field,
       record.definition.littleEndian,
@@ -54,8 +55,7 @@ export async function readFit(
   const bytes = input;
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const index: FitIndex = {
-    bytes,
-    view,
+    bytes: new ByteStore([bytes]),
     records: [],
     definitions: [],
     messages: new Map(),

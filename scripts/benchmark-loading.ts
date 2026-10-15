@@ -8,10 +8,12 @@ import { ChartCache } from "../src/document/chart-cache";
 import { MapCache } from "../src/document/map-cache";
 import { addSummaryDiagnostics } from "../src/repair/repair";
 import { activity } from "../tests/fixtures";
+import { sensors as sensorCandidates } from "../src/document/series";
 
 const stage = process.argv[2] ?? "current";
 if (!/^[a-z0-9-]+$/i.test(stage)) throw new Error("Invalid benchmark label");
-const path = process.argv[3];
+const selectedFirst = process.argv.includes("--selected-first");
+const path = process.argv.slice(3).find((value) => !value.startsWith("--"));
 const inputs = path ? [0] : [100_000, 1_000_000];
 const reports = [];
 for (const count of inputs) {
@@ -61,9 +63,15 @@ for (const count of inputs) {
     document.table({ message: 20, developer: false, page: 0, size: 20 }, job),
   );
   const charts = new ChartCache();
-  const inventory = await measure("sensorsMs", (job) =>
-    charts.query(document, { sensors: [], developer: false, width: 1366 }, job),
-  );
+  const inventory = selectedFirst
+    ? { sensors: sensorCandidates(document, false) }
+    : await measure("sensorsMs", (job) =>
+        charts.query(
+          document,
+          { sensors: [], developer: false, width: 1366 },
+          job,
+        ),
+      );
   const sensors = inventory.sensors
     .filter(
       (sensor) =>
@@ -82,6 +90,14 @@ for (const count of inputs) {
     charts.query(document, query, job),
   );
   await measure("cachedChartMs", (job) => charts.query(document, query, job));
+  if (selectedFirst)
+    await measure("remainingSensorsMs", (job) =>
+      charts.query(
+        document,
+        { sensors: [], developer: false, width: 1366 },
+        job,
+      ),
+    );
   const maps = new MapCache();
   const { data: map } = await measure("mapMs", (job) =>
     maps.query(document, job),
@@ -99,6 +115,7 @@ for (const count of inputs) {
     input: path ? "external" : "synthetic",
     records: document.index.records.length,
     bytes: document.index.bytes.length,
+    selectedFirst,
     ...times,
     // Checkpoint spacing includes awaited I/O and GC; it is not a main-thread task duration.
     maximumCheckpointIntervalMs: maximumSlice,

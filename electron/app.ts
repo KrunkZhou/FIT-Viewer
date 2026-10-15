@@ -1,4 +1,13 @@
-import { app, BrowserWindow, net, protocol, session, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  net,
+  protocol,
+  session,
+  shell,
+  type IpcMainEvent,
+} from "electron";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -79,6 +88,25 @@ export async function createWindow(
     },
   });
   configure?.(window);
+  let discardClose = false;
+  window.webContents.on("will-prevent-unload", (event) => {
+    if (discardClose) event.preventDefault();
+    else window.webContents.send("files:confirm-close");
+  });
+  const close = (event: IpcMainEvent) => {
+    if (
+      event.sender !== window.webContents ||
+      event.senderFrame !== window.webContents.mainFrame ||
+      !appNavigation(event.senderFrame.url)
+    )
+      return;
+    discardClose = true;
+    window.close();
+  };
+  ipcMain.on("files:discard-close", close);
+  window.once("closed", () =>
+    ipcMain.removeListener("files:discard-close", close),
+  );
   const openExternal = (url: string) => {
     if (externalLink(url)) void shell.openExternal(url).catch(console.error);
   };

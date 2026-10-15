@@ -1,42 +1,45 @@
-import { useId, useState } from "react";
+import { useId, useState, useSyncExternalStore } from "react";
 import { Check, Download, Pencil, RotateCcw } from "lucide-react";
-import type {
-  CiqSettingsEdit,
-  CiqSettingsFile,
-  DocumentSummary,
-  ExportQuery,
-} from "../model";
+import type { CiqSettingsFile, DocumentSummary, ExportQuery } from "../model";
 import type {
   CiqDictionary,
   CiqScalar,
   CiqValue,
 } from "../protocol/ciq-settings";
-import { ciqScalarText, parseCiqInput } from "../protocol/ciq-edit";
+import { ciqScalarText } from "../protocol/ciq-edit";
 import { IconButton } from "./controls";
+import { CiqDraftStore, type CiqDraft } from "./ciq-drafts";
 
-interface Draft {
-  text: string;
-  edit?: CiqSettingsEdit;
-  error?: string;
-}
 interface Editor {
   filename: string;
   editing: boolean;
-  drafts: Map<string, Draft>;
+  drafts: ReadonlyMap<string, CiqDraft>;
   change: (value: CiqScalar, path: number[], text: string) => void;
 }
 
 export function CiqSettings({
   files,
   download,
+  store: suppliedStore,
+  source,
 }: {
   files: NonNullable<DocumentSummary["ciqSettings"]>;
   download: (query: ExportQuery) => void;
+  store?: CiqDraftStore;
+  source?: number;
 }) {
+  const [localStore] = useState(() => new CiqDraftStore());
+  const store = suppliedStore ?? localStore;
   return (
     <section className="viewer-ciq-settings">
       {files.map((file) => (
-        <SettingsFile key={file.source} file={file} download={download} />
+        <SettingsFile
+          key={file.source}
+          file={file}
+          download={download}
+          store={store}
+          source={source ?? file.source}
+        />
       ))}
     </section>
   );
@@ -45,29 +48,27 @@ export function CiqSettings({
 function SettingsFile({
   file,
   download,
+  store,
+  source,
 }: {
   file: CiqSettingsFile;
   download: (query: ExportQuery) => void;
+  store: CiqDraftStore;
+  source: number;
 }) {
   const [editing, setEditing] = useState(false);
-  const [drafts, setDrafts] = useState(new Map<string, Draft>());
+  const drafts = useSyncExternalStore(
+    store.subscribe,
+    () => store.get(source),
+    () => store.get(source),
+  );
   const errors = [...drafts.values()].some((draft) => draft.error);
   const editor: Editor = {
     filename: file.filename,
     editing,
     drafts,
-    change: (original, path, text) => {
-      const key = path.join(".");
-      let draft: Draft;
-      try {
-        const value = parseCiqInput(original, text);
-        draft = { text, edit: { path, value } };
-        if (Object.is(value.value, original.value)) draft.edit = undefined;
-      } catch (error) {
-        draft = { text, error: (error as Error).message };
-      }
-      setDrafts((previous) => new Map(previous).set(key, draft));
-    },
+    change: (original, path, text) =>
+      store.change(source, original, path, text),
   };
   const changed = [...drafts.values()].filter(
     (draft) => draft.edit || draft.error,
@@ -100,7 +101,7 @@ function SettingsFile({
             title={`Reset changes in ${file.filename}`}
             tooltip="Reset to the uploaded settings"
             disabled={!changed}
-            onClick={() => setDrafts(new Map())}
+            onClick={() => store.reset(source)}
           >
             <RotateCcw size={16} />
           </IconButton>

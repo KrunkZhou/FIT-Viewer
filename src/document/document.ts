@@ -36,6 +36,10 @@ export class FitDocument {
   readonly memo = new Map<number, Record<string, string>>();
   private filterCache = new Map<string, number[]>();
   private optionCache = new Map<string, Record<string, string[]>>();
+  private projections = new WeakMap<
+    ReadonlySet<string>,
+    WeakMap<Definition, ReadonlySet<string> | null>
+  >();
   private gpsPoints = 0;
   private hasMap = false;
   private startTimestamp?: number;
@@ -160,13 +164,44 @@ export class FitDocument {
   raw(id: number): Record<string, RawValue> {
     return this.metadata.raw(this.index.records[id]);
   }
+  private projectedRaw(record: RecordRef, selected: ReadonlySet<string>) {
+    let definitions = this.projections.get(selected);
+    if (!definitions)
+      this.projections.set(selected, (definitions = new WeakMap()));
+    let keys = definitions.get(record.definition);
+    if (keys === undefined) {
+      const dependencies = new Set(selected);
+      const profile = Profile.messages[record.definition.message];
+      let fixed = true;
+      for (const wire of record.definition.fields) {
+        if (
+          selected.has(fieldKey(wire)) &&
+          !this.metadata.staticField(record, wire)
+        )
+          fixed = false;
+        if (wire.developer !== undefined) continue;
+        const components = profile?.fields[wire.id]?.components ?? [];
+        for (const target of components) {
+          if (!selected.has(String(target))) continue;
+          dependencies.add(String(wire.id));
+          // A component can itself have controller-dependent metadata.
+          if (profile.fields[Number(target)]?.subFields?.length) fixed = false;
+        }
+      }
+      keys = fixed ? dependencies : null;
+      definitions.set(record.definition, keys);
+    }
+    // Dynamic subfields, developer fields and guarded watch metadata retain
+    // the complete raw record. Fixed projections decode only their dependencies.
+    return this.metadata.raw(record, keys ?? undefined);
+  }
   cells(
     id: number,
     derived = true,
     selected?: ReadonlySet<string>,
   ): Record<string, Cell> {
     const record = this.index.records[id];
-    const raw = this.raw(id);
+    const raw = selected ? this.projectedRaw(record, selected) : this.raw(id);
     const result: Record<string, Cell> = {};
     for (const wire of record.definition.fields) {
       if (selected && !selected.has(fieldKey(wire))) continue;

@@ -1,7 +1,7 @@
 import type { ChartData, ChartQuery, Job } from "../model";
 import type { FitDocument } from "./document";
-import { chart, chartSensors } from "./series";
-import { chartQueryGroups, chartQueryKey } from "./chart-query";
+import { chart, chartSensors, sensors as sensorCandidates } from "./series";
+import { chartQueryGroups, chartQueryKey, isMotionSensor } from "./chart-query";
 
 export class ChartCache {
   private documents = new WeakMap<
@@ -23,8 +23,26 @@ export class ChartCache {
     job: Job,
   ): Promise<ChartData> {
     await job.yield();
-    const sensors = await chartSensors(document, query.developer, job);
-    const groups = chartQueryGroups(sensors, query);
+    if (!query.sensors.length)
+      return {
+        sensors: await chartSensors(document, query.developer, job),
+        series: {},
+        start: 0,
+        end: 0,
+      };
+    const groups = chartQueryGroups(
+      sensorCandidates(document, query.developer),
+      query,
+    );
+    if (groups.length > 1) {
+      const selected = new Set(query.sensors);
+      const ordinary = sensorCandidates(document, query.developer)
+        .filter((sensor) => selected.has(sensor.key) && !isMotionSensor(sensor))
+        .map((sensor) => sensor.key);
+      if (ordinary.length)
+        await chartSensors(document, query.developer, job, ordinary);
+    }
+    const sensors = new Map<string, ChartData["sensors"][number]>();
     const series: ChartData["series"] = {};
     let start = Infinity;
     let end = -Infinity;
@@ -32,6 +50,7 @@ export class ChartCache {
     for (const group of groups) {
       const data = await this.group(document, group, job);
       single = data;
+      for (const sensor of data.sensors) sensors.set(sensor.key, sensor);
       Object.assign(series, data.series);
       if (Object.values(data.series).some((points) => points.length)) {
         start = Math.min(start, data.start);
@@ -40,7 +59,10 @@ export class ChartCache {
     }
     if (groups.length === 1) return single!;
     return {
-      sensors,
+      sensors: sensorCandidates(document, query.developer).flatMap((sensor) => {
+        const known = sensors.get(sensor.key);
+        return known ? [known] : [];
+      }),
       series,
       start: Number.isFinite(start) ? start : 0,
       end: Number.isFinite(end) ? end : 0,

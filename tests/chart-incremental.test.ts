@@ -179,6 +179,11 @@ test("worker group caching keeps prior series and matches combined queries inclu
     yield: async () => {},
   });
   const processed = new Set<string>();
+  const staticField = document.metadata.staticField.bind(document.metadata);
+  document.metadata.staticField = (record, wire) => {
+    processed.add(String(wire.id));
+    return staticField(record, wire);
+  };
   const cells = document.cells.bind(document);
   document.cells = (id, derived, selected) => {
     for (const key of selected ?? []) processed.add(key);
