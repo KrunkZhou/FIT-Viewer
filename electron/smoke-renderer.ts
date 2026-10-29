@@ -1,4 +1,24 @@
 // Electron executes these serialized functions in the isolated renderer.
+export async function checkStreamedDownload() {
+  const waitFor = async (predicate: () => boolean) => {
+    const deadline = performance.now() + 10000;
+    while (!predicate()) {
+      if (performance.now() > deadline)
+        throw new Error("Streamed download timed out");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  };
+  document.getElementById("tab-messages")!.click();
+  localStorage.removeItem("csvTimeFormat");
+  await waitFor(() => !!document.querySelector('[aria-label="Download CSV"]'));
+  document
+    .querySelector<HTMLButtonElement>('[aria-label="Download CSV"]')!
+    .click();
+  await waitFor(() => !!document.querySelector("dialog[open] form"));
+  document.querySelector<HTMLFormElement>("dialog[open] form")!.requestSubmit();
+  return { streamed: true };
+}
+
 export async function checkCiqRenderer(
   settingsBytes: number[],
   fitBytes: number[],
@@ -22,13 +42,14 @@ export async function checkCiqRenderer(
     input.files = data.files;
     input.dispatchEvent(new Event("change", { bubbles: true }));
   };
-  const settings = () => new File([new Uint8Array(settingsBytes)], "example.SET");
+  const settings = () =>
+    new File([new Uint8Array(settingsBytes)], "example.SET");
   const fit = () => new File([new Uint8Array(fitBytes)], "ciq-run.fit");
   open([settings()]);
   await waitFor(
     () =>
-      document.querySelector(".viewer-file h2")?.textContent === "example.SET" &&
-      !!tab("settings"),
+      document.querySelector(".viewer-file h2")?.textContent ===
+        "example.SET" && !!tab("settings"),
     "standalone settings",
   );
   if (tab("settings")?.getAttribute("aria-selected") !== "true")
@@ -69,8 +90,8 @@ export async function checkCiqRenderer(
   select.dispatchEvent(new Event("change", { bubbles: true }));
   await waitFor(
     () =>
-      document.querySelector(".viewer-file h2")?.textContent === "example.SET" &&
-      !!tab("settings"),
+      document.querySelector(".viewer-file h2")?.textContent ===
+        "example.SET" && !!tab("settings"),
     "settings source selection",
   );
   select.value = sourceValue("ciq-run.fit");
@@ -103,7 +124,8 @@ export async function checkCiqRenderer(
   open([settings()]);
   await waitFor(
     () =>
-      document.querySelector(".viewer-file h2")?.textContent === "example.SET" &&
+      document.querySelector(".viewer-file h2")?.textContent ===
+        "example.SET" &&
       document.querySelectorAll(".viewer-ciq-file tbody tr").length === 6,
     "settings screenshot",
   );
@@ -290,7 +312,7 @@ export async function checkDesktopSelection(name: string, sources: number) {
   if (
     !window.fitDesktop ||
     Object.keys(window.fitDesktop).sort().join(",") !==
-      "discardAndClose,onBeforeClose,onOpen,prompts,release,updates"
+      "discardAndClose,downloads,onBeforeClose,onOpen,prompts,release,updates"
   )
     throw new Error("Desktop preload API is missing or overly broad");
   if (!document.querySelector("input[webkitdirectory]"))

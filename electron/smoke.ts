@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { app, type BrowserWindow } from "electron";
+import { app, dialog, type BrowserWindow } from "electron";
 import { createWindow, registerBundle } from "./app";
 import { activity } from "../tests/fixtures";
 import { syntheticSettings } from "../tests/ciq-fixtures";
@@ -13,6 +13,7 @@ import {
   checkDesktopNotifications,
   checkMapTimeline,
   checkRenderer,
+  checkStreamedDownload,
 } from "./smoke-renderer";
 import { OpenFiles } from "./open-files";
 import { desktopUpdates } from "./updates";
@@ -91,6 +92,28 @@ app
     const timeline = await window.webContents.executeJavaScript(
       `(${checkMapTimeline.toString()})()`,
     );
+    const downloadPath = resolve(".cache/desktop-streamed.csv");
+    await writeFile(downloadPath, "existing file");
+    const saveDialog = dialog.showSaveDialog;
+    // Replace only the native picker; the renderer, worker, IPC and disk path stay real.
+    dialog.showSaveDialog = (async () => ({
+      canceled: false,
+      filePath: downloadPath,
+    })) as typeof dialog.showSaveDialog;
+    const download = await window.webContents.executeJavaScript(
+      `(${checkStreamedDownload.toString()})()`,
+    );
+    let csv = "existing file";
+    const downloadDeadline = performance.now() + 10000;
+    while (csv === "existing file") {
+      if (performance.now() > downloadDeadline)
+        throw new Error("Streamed CSV was not committed");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      csv = await readFile(downloadPath, "utf8");
+    }
+    dialog.showSaveDialog = saveDialog;
+    assert.ok(csv.startsWith("Timestamp,"));
+    assert.equal(csv.split("\n").length, 33);
     const ciq = await window.webContents.executeJavaScript(
       `(${checkCiqRenderer.toString()})(${JSON.stringify(Array.from(syntheticSettings()))}, ${JSON.stringify(bytes)})`,
     );
@@ -102,7 +125,7 @@ app
     const image = await window.webContents.capturePage();
     await writeFile(".cache/electron-smoke.png", image.toPNG());
     console.log(
-      `Desktop smoke passed: ${JSON.stringify({ ...result, initial, replacement, info, prompts, ciq, timeline })}`,
+      `Desktop smoke passed: ${JSON.stringify({ ...result, initial, replacement, info, prompts, ciq, timeline, download })}`,
     );
     clearTimeout(timeout);
     window.destroy();

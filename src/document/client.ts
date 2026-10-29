@@ -181,12 +181,15 @@ export class DocumentClient {
         cleanup: () => signal?.removeEventListener("abort", abort),
       });
       try {
-        this.worker!.postMessage({
-          source: this.source,
-          ...payload,
-          requestId,
-          documentId: this.documentId,
-        });
+        this.worker!.postMessage(
+          {
+            source: this.source,
+            ...payload,
+            requestId,
+            documentId: this.documentId,
+          },
+          payload.kind === "export" && payload.stream ? [payload.stream] : [],
+        );
       } catch (error) {
         this.pending.delete(requestId);
         signal?.removeEventListener("abort", abort);
@@ -198,7 +201,8 @@ export class DocumentClient {
     query: ExportQuery,
     signal?: AbortSignal,
     progress?: Pending["progress"],
+    stream?: WritableStream<Uint8Array>,
   ): Promise<ExportResult> {
-    return this.request({ kind: "export", query }, signal, progress);
+    return this.request({ kind: "export", query, stream }, signal, progress);
   }
 }

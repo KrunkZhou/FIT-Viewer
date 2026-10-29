@@ -73,7 +73,7 @@ async function loadSingleFile(
   if ("url" in file) {
     if (!isDesktopFileUrl(file.url))
       throw new Error("Invalid desktop file URL.");
-    const response = await fetch(file.url);
+    const response = await fetch(file.url, { signal: job.signal });
     if (!response.ok)
       throw new Error(
         "The selected desktop file is no longer available. Open it again.",

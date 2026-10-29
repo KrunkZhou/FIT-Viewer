@@ -465,10 +465,14 @@ export default function Charts({
     );
   }, [groups, selected, combineXYZ]);
   const plots = useMemo(
-    () => plotCache.prepare(plotGroups, loaded.series, sensorColor),
-    [plotCache, plotGroups, loaded.series],
+    () =>
+      plotCache.prepare(plotGroups, loaded.series, sensorColor, loaded.display),
+    [plotCache, plotGroups, loaded.series, loaded.display],
   );
-  const domain = syncTime ? chartTimeDomain(plots, range) : undefined;
+  const domain = useMemo(
+    () => (syncTime ? chartTimeDomain(plots, range) : undefined),
+    [syncTime, plots, range],
+  );
   const domainStart = domain?.[0];
   const domainEnd = domain?.[1];
   const timeScale = useMemo(() => {
@@ -503,6 +507,14 @@ export default function Charts({
       return;
     const complete = inventory?.developer === developer;
     const controller = new AbortController();
+    const options = {
+      width: queryWidth,
+      developer,
+      detail,
+      ...range,
+      filter,
+      dates,
+    };
     setInventoryLoading(true);
     setInventoryError("");
     const request = complete
@@ -530,8 +542,44 @@ export default function Charts({
     request
       .then((next) => {
         if (controller.signal.aborted) return;
+        if (!complete) {
+          const keys = chartSelection(
+            next.sensors,
+            selected,
+            !initialized.current,
+          );
+          const groups = groupMotionAxes(
+            groupSensors(next.sensors).filter((group) =>
+              keys.includes(group.sensor.key),
+            ),
+            combineXYZ,
+          );
+          loader.seed(
+            groups.map((group) => ({
+              ...options,
+              sensors: group.members.map((sensor) => sensor.key),
+            })),
+            next,
+          );
+        }
         setInventoryLoading(!complete);
-        setInventory({ developer, sensors: next.sensors, complete });
+        setInventory((previous) => {
+          const old = new Map(
+            previous?.developer === developer
+              ? previous.sensors.map((sensor) => [sensor.key, sensor])
+              : [],
+          );
+          return {
+            developer,
+            complete,
+            sensors: next.sensors.map((sensor) => {
+              const before = old.get(sensor.key);
+              return before && JSON.stringify(before) === JSON.stringify(sensor)
+                ? before
+                : sensor;
+            }),
+          };
+        });
         setInventoryError("");
         const initialize = !initialized.current;
         if (complete || next.sensors.length) initialized.current = true;

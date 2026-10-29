@@ -1,18 +1,29 @@
 import assert from "node:assert/strict";
 import { FitDocument } from "../src/document/document";
 import { createJob } from "../src/document/jobs";
-import { definition, type Field } from "../tests/fixtures";
+import { data, definition, join, type Field } from "../tests/fixtures";
 import { wrapBody } from "../src/protocol/writer";
+import { addSummaryDiagnostics } from "../src/repair/repair";
 
 if (!global.gc) throw new Error("Run with node --expose-gc --import tsx.");
-const files = 32;
-const rows = 16384;
+const files = Number(process.argv[2] ?? 32);
+const rows = Math.floor(Number(process.argv[3] ?? 524288) / files);
+assert.ok(Number.isInteger(files) && files > 0 && files <= 10000);
+assert.ok(Number.isInteger(rows) && rows >= 2);
 const fields: Field[] = [
   [253, 6, 1100000000],
   [3, 2, 120],
   [200, 13, new Array<number>(240).fill(1)],
 ];
-const layout = definition(20, fields);
+const identity: Field[] = [[0, 0, 4]];
+const sport: Field[] = [[0, 0, 1]];
+const layout = join([
+  definition(0, identity),
+  data(identity),
+  definition(12, sport),
+  data(sport),
+  definition(20, fields),
+]);
 const size = 246;
 const sources = Array.from({ length: files }, (_, source) => {
   const body = new Uint8Array(layout.length + rows * size);
@@ -31,7 +42,7 @@ let peakBuffers = before.arrayBuffers;
 let peakHeap = before.heapUsed;
 const job = createJob(new AbortController().signal);
 const start = performance.now();
-const document = await FitDocument.openSources(sources, "folder", {
+const measuredJob = {
   ...job,
   yield: async () => {
     const memory = process.memoryUsage();
@@ -39,8 +50,13 @@ const document = await FitDocument.openSources(sources, "folder", {
     peakHeap = Math.max(peakHeap, memory.heapUsed);
     await job.yield();
   },
-});
+};
+const document = await FitDocument.openSources(sources, "folder", measuredJob);
 const openMs = performance.now() - start;
+const summaryStart = performance.now();
+await addSummaryDiagnostics(document, measuredJob);
+const summaryMs = performance.now() - summaryStart;
+const totalMs = performance.now() - start;
 global.gc();
 const after = process.memoryUsage();
 let sharedSources = 0;
@@ -49,13 +65,19 @@ for (const [i, source] of document.sources.entries()) {
   if (bytes.buffer === sources[i].bytes.buffer) sharedSources++;
   assert.deepEqual(bytes, sources[i].bytes);
 }
-assert.equal(document.index.records.length, files * rows);
+assert.equal(document.recordIds(20).length, files * rows);
+assert.equal(
+  document.index.diagnostics.filter((d) => d.code === "missing-summary").length,
+  files * 3,
+);
 console.log(
   JSON.stringify({
     files,
     records: document.index.records.length,
     inputMiB: document.index.bytes.length / 2 ** 20,
     openMs,
+    summaryMs,
+    totalMs,
     sharedSources,
     inputBufferMiB: before.arrayBuffers / 2 ** 20,
     retainedBufferMiB: after.arrayBuffers / 2 ** 20,

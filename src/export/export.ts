@@ -1,7 +1,7 @@
 import type { ExportQuery, ExportResult, FieldInfo, RawValue } from "../model";
 import { FitDocument } from "../document/document";
 import { chartPoints, mapPositions, sensors } from "../document/series";
-import { FIT_EPOCH, HOUR_CYCLE } from "../protocol/time";
+import { timestampIso, HOUR_CYCLE } from "../protocol/time";
 import { idleJob } from "../protocol/reader";
 import { repair } from "../repair/repair";
 import { exportGeoJson } from "./geojson";
@@ -10,6 +10,9 @@ import { hasTimeRange, inTimeRange } from "../document/time-range";
 import { applyCiqEdits } from "../protocol/ciq-edit";
 import { readCiqSettings } from "../protocol/ciq-settings";
 import { writeCiqSettings } from "../protocol/ciq-write";
+import { ExportOutput } from "./output";
+import { CsvRows } from "./csv-rows";
+import { exportBase } from "./filename";
 
 export const escapeCsv = (value: string): string =>
   /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
@@ -46,6 +49,29 @@ export async function exportDocument(
   document: FitDocument,
   query: ExportQuery,
   job = idleJob(),
+  stream?: WritableStream<Uint8Array>,
+): Promise<ExportResult> {
+  const output = new ExportOutput(stream);
+  try {
+    job.signal.throwIfAborted();
+    const result = await formatDocument(
+      document,
+      query,
+      output.job(job),
+      output,
+    );
+    return { ...result, streamed: Boolean(stream) };
+  } catch (error) {
+    await output.abort(error);
+    throw error;
+  }
+}
+
+async function formatDocument(
+  document: FitDocument,
+  query: ExportQuery,
+  job: import("../model").Job,
+  parts: ExportOutput,
 ): Promise<ExportResult> {
   if (query.format === "set") {
     const settings = query.settings;
@@ -62,27 +88,24 @@ export async function exportDocument(
         )
       : document.index.bytes.subarray(source.start, source.end);
     await readCiqSettings(bytes, job);
+    parts.push(bytes as Uint8Array<ArrayBuffer>);
     return {
-      blob: new Blob([bytes as Uint8Array<ArrayBuffer>], {
-        type: "application/octet-stream",
-      }),
+      blob: await parts.finish("application/octet-stream"),
       filename: file.filename.split(/[\\/]/).pop()!,
     };
   }
   if (query.format === "geojson")
-    return exportGeoJson(document, job, query.dates);
-  const base = document.filename.replace(/\.[^.]+$/, "");
-  const parts: BlobPart[] = [];
+    return exportGeoJson(document, job, query.dates, parts);
+  const base = exportBase(document.filename);
   const encoder = new TextEncoder();
   if (query.format === "fit") {
     if (document.ciqSettings.length && !document.index.subfiles.length)
       throw new Error("CIQ settings files cannot be repaired as FIT files.");
-    if (document.sources.length > 1) return repairArchive(document, job);
+    if (document.sources.length > 1) return repairArchive(document, job, parts);
     const result = await repair(document, job);
+    parts.push(result.bytes as Uint8Array<ArrayBuffer>);
     return {
-      blob: new Blob([result.bytes as Uint8Array<ArrayBuffer>], {
-        type: "application/octet-stream",
-      }),
+      blob: await parts.finish("application/octet-stream"),
       filename: `${base}-fixed.fit`,
       partial: result.partial,
       generated: result.generated,
@@ -94,23 +117,8 @@ export async function exportDocument(
     const developer = Boolean(query.developer);
     const fields = document.getFields(message, developer);
     const ids = document.index.messages.get(message) ?? [];
-    const infos = new Map(fields.map((field) => [field.key, field]));
+    const rows = new CsvRows(document, fields, developer);
     const combined = document.sources.length > 1;
-    const sourceInfos = new Map(
-      combined
-        ? document.sources.map(
-            (source) =>
-              [
-                source.id,
-                new Map(
-                  document
-                    .getFields(message, developer, source.id)
-                    .map((field) => [field.key, field]),
-                ),
-              ] as const,
-          )
-        : [],
-    );
     const dateOptions: Intl.DateTimeFormatOptions = {
       hourCycle: HOUR_CYCLE,
       timeZone: query.timezone,
@@ -126,33 +134,39 @@ export async function exportDocument(
       ...dateOptions,
       timeZone: "UTC",
     });
-    const cast = (value: RawValue, info: FieldInfo): string => {
-      if (value === null) return "";
-      if (Array.isArray(value))
-        return `[${value.map((v) => cast(v, info)).join(", ")}]`;
-      if (
-        !developer &&
-        (info.type === "dateTime" || info.type === "localDateTime") &&
-        typeof value === "string" &&
-        query.timeFormat === "localized"
-      )
-        return info.type === "localDateTime"
-          ? wallClockFormat.format(new Date(`${value}Z`))
-          : dateFormat.format(new Date(value));
-      if (!developer && typeof value === "number") {
-        const decimals =
-          info.units === "deg" ||
-          info.type === "float32" ||
-          info.type === "float64"
-            ? undefined
-            : scalePrecision(info.scale);
-        if (decimals === undefined || decimals > 20) return String(value);
-        const text = value.toFixed(decimals);
-        return decimals > 0 && text.includes(".")
-          ? text.replace(/0+$/, "").replace(/\.$/, "")
-          : text;
-      }
-      return String(value);
+    const formatters = new WeakMap<FieldInfo, (value: RawValue) => string>();
+    const formatter = (info: FieldInfo): ((value: RawValue) => string) => {
+      const existing = formatters.get(info);
+      if (existing) return existing;
+      const decimals =
+        info.units === "deg" ||
+        info.type === "float32" ||
+        info.type === "float64"
+          ? undefined
+          : scalePrecision(info.scale);
+      const cast = (value: RawValue): string => {
+        if (value === null) return "";
+        if (Array.isArray(value)) return `[${value.map(cast).join(", ")}]`;
+        if (
+          !developer &&
+          (info.type === "dateTime" || info.type === "localDateTime") &&
+          typeof value === "string" &&
+          query.timeFormat === "localized"
+        )
+          return info.type === "localDateTime"
+            ? wallClockFormat.format(new Date(`${value}Z`))
+            : dateFormat.format(new Date(value));
+        if (!developer && typeof value === "number") {
+          if (decimals === undefined || decimals > 20) return String(value);
+          const text = value.toFixed(decimals);
+          return decimals > 0 && text.includes(".")
+            ? text.replace(/0+$/, "").replace(/\.$/, "")
+            : text;
+        }
+        return String(value);
+      };
+      formatters.set(info, cast);
+      return cast;
     };
     parts.push(
       encoder.encode(
@@ -169,19 +183,9 @@ export async function exportDocument(
     for (let offset = 0; offset < ids.length; offset += batchSize) {
       const lines: string[] = [];
       for (const id of ids.slice(offset, offset + batchSize)) {
-        const cells = document.cells(id, !developer);
-        const file =
-          document.index.subfiles[document.index.records[id].subfile];
-        const rowInfos = sourceInfos.get(file.source ?? 0) ?? infos;
-        const values = fields
-          .map((f) =>
-            escapeCsv(
-              cast(
-                cells[f.key]?.[developer ? "raw" : "value"] ?? null,
-                rowInfos.get(f.key) ?? f,
-              ),
-            ),
-          )
+        const values = rows
+          .read(id)
+          .map(({ value, info }) => escapeCsv(formatter(info)(value)))
           .join(",");
         const source = document.sourceName(document.index.records[id].subfile);
         lines.push(`${combined ? `${escapeCsv(source)},` : ""}${values}`);
@@ -195,7 +199,7 @@ export async function exportDocument(
       await job.yield();
     }
     return {
-      blob: new Blob(parts, { type: "text/csv;charset=utf-8" }),
+      blob: await parts.finish("text/csv;charset=utf-8"),
       filename: `${base}-${message}.csv`,
     };
   }
@@ -212,9 +216,21 @@ export async function exportDocument(
         name?: string;
       },
       tag: string,
-    ) =>
-      `<${tag} lat="${p.lat}" lon="${p.lon}">${p.elevation !== undefined ? `<ele>${p.elevation}</ele>` : ""}${p.time !== undefined ? `<time>${new Date(FIT_EPOCH + p.time * 1000).toISOString()}</time>` : ""}${p.name ? `<name>${xml(p.name)}</name>` : ""}</${tag}>`;
-    for await (const entry of mapPositions(document, job, query.dates))
+    ) => {
+      const time = p.time === undefined ? null : timestampIso(p.time);
+      return `<${tag} lat="${p.lat}" lon="${p.lon}">${p.elevation !== undefined ? `<ele>${p.elevation}</ele>` : ""}${time !== null ? `<time>${time}</time>` : ""}${p.name ? `<name>${xml(p.name)}</name>` : ""}</${tag}>`;
+    };
+    const waypoints = new Set(
+      [...document.index.messages.keys()].filter(
+        (message) => message !== 20 && (message !== 19 || query.withLaps),
+      ),
+    );
+    for await (const entry of mapPositions(
+      document,
+      job,
+      query.dates,
+      waypoints,
+    ))
       if (
         entry.point &&
         entry.message !== 20 &&
@@ -231,7 +247,12 @@ export async function exportDocument(
         batch = [];
       }
     };
-    for await (const entry of mapPositions(document, job, query.dates)) {
+    for await (const entry of mapPositions(
+      document,
+      job,
+      query.dates,
+      new Set([20]),
+    )) {
       if (entry.message !== 20) continue;
       const p = entry.point;
       if (!p) continue;
@@ -255,16 +276,29 @@ export async function exportDocument(
     if (segment) parts.push("</trkseg>");
     parts.push("</trk></gpx>");
     return {
-      blob: new Blob(parts, { type: "application/gpx+xml" }),
+      blob: await parts.finish("application/gpx+xml"),
       filename: `${base}.gpx`,
     };
   }
   if (query.format === "hrv") {
     let completed = 0;
-    const total = document.sources.length;
-    for (const source of document.sources) {
-      const filter = total > 1 ? source.id : undefined;
-      const ids = document.recordIds(78, filter);
+    const total = document.index.subfiles.length;
+    const groups = Array.from({ length: total }, () => ({
+      hrv: [] as number[],
+      hr: [] as number[],
+    }));
+    for (const [message, key] of [
+      [78, "hrv"],
+      [132, "hr"],
+    ] as const) {
+      const ids = document.recordIds(message);
+      for (let i = 0; i < ids.length; i++) {
+        groups[document.index.records[ids[i]].subfile][key].push(ids[i]);
+        if (i % 512 === 0) await job.yield();
+      }
+    }
+    for (const group of groups) {
+      const ids = group.hrv;
       for (let offset = 0; offset < ids.length; offset += 256) {
         const lines = ids.slice(offset, offset + 256).flatMap((id) => {
           const value = document.cells(id)["0"]?.value;
@@ -282,12 +316,8 @@ export async function exportDocument(
       }
       if (!ids.length) {
         let previous: number | undefined;
-        let file = -1;
-        for (const id of document.recordIds(132, filter)) {
-          const record = document.index.records[id];
+        for (const id of group.hr) {
           const values = document.cells(id)["9"]?.value;
-          if (file !== record.subfile) previous = undefined;
-          file = record.subfile;
           for (const value of Array.isArray(values) ? values : [values]) {
             if (typeof value !== "number") continue;
             if (previous !== undefined && value > previous)
@@ -301,7 +331,7 @@ export async function exportDocument(
       await job.yield();
     }
     return {
-      blob: new Blob(parts, { type: "text/plain;charset=utf-8" }),
+      blob: await parts.finish("text/plain;charset=utf-8"),
       filename: `${base}-rr.txt`,
     };
   }
@@ -332,6 +362,7 @@ export async function exportDocument(
         sensor,
         Boolean(query.developer),
         job,
+        query.dates,
       )) {
         if (!inTimeRange(point.time, query.dates)) continue;
         batch.push(json(point));
@@ -345,7 +376,7 @@ export async function exportDocument(
   }
   parts.push("}}");
   return {
-    blob: new Blob(parts, { type: "application/json" }),
+    blob: await parts.finish("application/json"),
     filename: `${base}-charts.json`,
   };
 }

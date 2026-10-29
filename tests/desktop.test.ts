@@ -218,6 +218,7 @@ test("desktop selection smoke accepts the close-confirmation bridge and rejects 
     release() {},
     onBeforeClose() {},
     discardAndClose() {},
+    downloads: {},
     prompts: {},
     updates: {},
   };

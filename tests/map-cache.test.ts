@@ -25,7 +25,7 @@ test("reopening the same map reuses geometry and the original GPS sample index",
     await cache.query(document, job(), { start: 1100000020, end: 1100000040 }),
     filtered,
   );
-  assert.notEqual(await cache.query(document, job()), first);
+  assert.equal(await cache.query(document, job()), first);
   const empty = await cache.query(document, job(), { intervals: [] });
   assert.deepEqual(empty.data.tracks, []);
 });

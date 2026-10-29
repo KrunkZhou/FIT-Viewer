@@ -16,9 +16,10 @@ import type {
   WireField,
 } from "../model";
 import { Metadata, words } from "../metadata/profile";
-import { fieldKey, numberValue, valid, WIDTHS } from "../protocol/binary";
+import { fieldKey, numberValue, valid } from "../protocol/binary";
 import { type FitIndex, idleJob, readFit } from "../protocol/reader";
 import { expandComponents } from "./components";
+import { componentKeys, componentWire } from "../metadata/official";
 import { positionCoordinates, positionFields } from "./positions";
 import { readWorkspace } from "./workspace";
 import { FIT_EPOCH, localDateKey } from "../protocol/time";
@@ -32,6 +33,7 @@ export class FitDocument {
   private sourceRecords = new Map<number, Map<number, number[]>>();
   readonly messageInfo: MessageInfo[];
   readonly components = new Map<number, Record<string, RawValue>>();
+  private componentFields = new Map<Definition, Set<string>>();
   readonly mergedHr = new Map<number, number>();
   readonly memo = new Map<number, Record<string, string>>();
   private filterCache = new Map<string, number[]>();
@@ -62,14 +64,15 @@ export class FitDocument {
     readonly ciqSettings: CiqSettingsFile[] = [],
   ) {
     this.metadata = new Metadata(index);
-    this.messageInfo = Array.from(index.messages, ([id, records]) => ({
-      id,
-      count: records.length,
-      name: this.metadata.messageName(id),
-      known:
-        Boolean(Profile.messages[id]) ||
-        !this.metadata.messageName(id).startsWith("Message "),
-    }));
+    this.messageInfo = Array.from(index.messages, ([id, records]) => {
+      const name = this.metadata.messageName(id);
+      return {
+        id,
+        count: records.length,
+        name,
+        known: Boolean(Profile.messages[id]) || !name.startsWith("Message "),
+      };
+    });
   }
   static async open(
     bytes: Uint8Array,
@@ -180,10 +183,14 @@ export class FitDocument {
         )
           fixed = false;
         if (wire.developer !== undefined) continue;
-        const components = profile?.fields[wire.id]?.components ?? [];
+        const field = profile?.fields[wire.id];
+        const components = [field, ...(field?.subFields ?? [])].flatMap(
+          (item) => item?.components ?? [],
+        );
         for (const target of components) {
           if (!selected.has(String(target))) continue;
           dependencies.add(String(wire.id));
+          if (field?.subFields.length) fixed = false;
           // A component can itself have controller-dependent metadata.
           if (profile.fields[Number(target)]?.subFields?.length) fixed = false;
         }
@@ -220,32 +227,8 @@ export class FitDocument {
       })) {
         if (selected && !selected.has(key)) continue;
         if (result[key]?.value !== null && result[key] !== undefined) continue;
-        const profile =
-          Profile.messages[record.definition.message]?.fields[Number(key)];
-        if (!profile) continue;
-        const type = Math.max(
-          0,
-          [
-            "enum",
-            "sint8",
-            "uint8",
-            "sint16",
-            "uint16",
-            "sint32",
-            "uint32",
-            "string",
-            "float32",
-            "float64",
-            "uint8z",
-            "uint16z",
-            "uint32z",
-            "byte",
-            "sint64",
-            "uint64",
-            "uint64z",
-          ].indexOf(profile.baseType),
-        );
-        const wire = { id: Number(key), type, size: WIDTHS[type] };
+        const wire = componentWire(record.definition.message, Number(key));
+        if (!wire) continue;
         const info = this.metadata.field(record, wire, raw);
         result[key] = this.metadata.cell(record, wire, value, info);
       }
@@ -279,50 +262,28 @@ export class FitDocument {
         visited.add(record.definition);
         const raw = this.raw(id);
         for (const field of record.definition.fields) {
-          const info = this.metadata.field(record, field, raw);
+          // A shared column must not borrow one record's subfield label or units.
+          const dynamic =
+            field.developer === undefined &&
+            Profile.messages[message]?.fields[field.id]?.subFields.length;
+          const info = this.metadata.field(record, field, dynamic ? {} : raw);
           if (
             !found.has(info.key) ||
             (found.get(info.key)?.unknown && !info.unknown)
           )
             found.set(info.key, info);
         }
-        for (const key of Object.keys({
-          ...expandComponents(record, raw),
-          ...this.components.get(id),
-        })) {
-          const profile = Profile.messages[message]?.fields[Number(key)];
-          if (profile && !found.has(key))
+        for (const key of this.componentFields.get(record.definition) ?? []) {
+          const wire = componentWire(message, Number(key));
+          if (wire && !found.has(key))
             found.set(
               key,
               this.metadata.field(
                 record,
-                {
-                  id: Number(key),
-                  type: Math.max(
-                    0,
-                    [
-                      "enum",
-                      "sint8",
-                      "uint8",
-                      "sint16",
-                      "uint16",
-                      "sint32",
-                      "uint32",
-                      "string",
-                      "float32",
-                      "float64",
-                      "uint8z",
-                      "uint16z",
-                      "uint32z",
-                      "byte",
-                      "sint64",
-                      "uint64",
-                      "uint64z",
-                    ].indexOf(profile.baseType),
-                  ),
-                  size: 1,
-                },
-                raw,
+                wire,
+                Profile.messages[message]?.fields[wire.id]?.subFields.length
+                  ? {}
+                  : raw,
               ),
             );
         }
@@ -388,20 +349,36 @@ export class FitDocument {
     const pages = Math.max(1, Math.ceil(filtered.length / size));
     let page = Math.min(pages - 1, Math.max(0, Math.trunc(query.page) || 0));
     let selected: number | undefined;
-    if (query.timestamp !== undefined || query.target !== undefined) {
+    if (query.target !== undefined && filtered.length) {
+      let low = 0;
+      let high = filtered.length;
+      while (low < high) {
+        const middle = low + Math.floor((high - low) / 2);
+        if (filtered[middle] < query.target) low = middle + 1;
+        else high = middle;
+      }
+      let nearest = Math.min(low, filtered.length - 1);
+      if (
+        low > 0 &&
+        Math.abs(filtered[low - 1] - query.target) <=
+          Math.abs(filtered[nearest] - query.target)
+      )
+        nearest = low - 1;
+      selected = filtered[nearest];
+      page = Math.floor(nearest / size);
+    } else if (query.timestamp !== undefined) {
       let bestDistance = Infinity;
       for (let i = 0; i < filtered.length; i++) {
         const record = this.index.records[filtered[i]];
         const distance =
-          query.target !== undefined
-            ? Math.abs(filtered[i] - query.target)
-            : record.timestamp === undefined
-              ? Infinity
-              : Math.abs(record.timestamp - query.timestamp!);
+          record.timestamp === undefined
+            ? Infinity
+            : Math.abs(record.timestamp - query.timestamp!);
         if (distance < bestDistance) {
           bestDistance = distance;
           selected = filtered[i];
           page = Math.floor(i / size);
+          if (distance === 0) break;
         }
         if (i % 4096 === 0) await job.yield();
       }
@@ -497,10 +474,26 @@ export class FitDocument {
     >();
     const positionTimes = new Map<number, number>();
     const derivedFields = new Map<Definition, Set<string>>();
+    const dynamicComponents = new Set<Definition>();
+    const recordBounds = new Map<number, [number, number]>();
+    const motionBounds = new Map<number, [number, number]>();
+    const addBounds = (
+      bounds: Map<number, [number, number]>,
+      subfile: number,
+      time: number,
+    ) => {
+      if (!Number.isFinite(time)) return;
+      const range = bounds.get(subfile);
+      if (range) {
+        range[0] = Math.min(range[0], time);
+        range[1] = Math.max(range[1], time);
+      } else bounds.set(subfile, [time, time]);
+    };
     for (const definition of this.index.definitions) {
       // Loading needs timing, positions and accumulated components, not every sensor array.
       const selected = new Set<string>();
       derivedFields.set(definition, selected);
+      this.componentFields.set(definition, componentKeys(definition));
       if (definition.message === 20)
         [0, 1, 6, 73].forEach((id) => selected.add(String(id)));
       if (definition.message === 164 || definition.message === 165) {
@@ -511,6 +504,17 @@ export class FitDocument {
       for (const wire of definition.fields) {
         if (wire.developer !== undefined) continue;
         const field = profile?.fields[wire.id];
+        if (field?.subFields.some((sub) => sub.hasComponents)) {
+          dynamicComponents.add(definition);
+          selected.add(String(wire.id));
+          for (const sub of field.subFields)
+            for (const condition of sub.map) {
+              const controller = Object.values(profile.fields).find(
+                (candidate) => candidate.name === condition.name,
+              );
+              if (controller) selected.add(String(controller.num));
+            }
+        }
         if (
           field?.isAccumulated ||
           (field?.hasComponents &&
@@ -559,6 +563,9 @@ export class FitDocument {
         record,
         derivedFields.get(record.definition),
       );
+      if (dynamicComponents.has(record.definition))
+        for (const key of componentKeys(record.definition, raw))
+          this.componentFields.get(record.definition)!.add(key);
       addDate(record.timestamp);
       if (
         record.timestamp !== undefined &&
@@ -566,11 +573,20 @@ export class FitDocument {
       ) {
         const ms = raw["0"];
         const offsets = raw["1"];
-        if (typeof ms === "number" && valid(ms, 4)) {
-          for (const offset of Array.isArray(offsets) ? offsets : [offsets]) {
-            if (typeof offset === "number" && valid(offset, 4))
-              addDate(record.timestamp + (ms + offset) / 1000);
-          }
+        const anchored = typeof ms === "number" && valid(ms, 4);
+        const base = record.timestamp + (anchored ? ms / 1000 : 0);
+        let sampled = false;
+        for (const offset of Array.isArray(offsets) ? offsets : [offsets]) {
+          if (!anchored || typeof offset !== "number" || !valid(offset, 4))
+            continue;
+          const time = base + offset / 1000;
+          addDate(time);
+          addBounds(motionBounds, record.subfile, time);
+          sampled = true;
+        }
+        if (!sampled) {
+          addDate(base);
+          addBounds(motionBounds, record.subfile, base);
         }
       }
       const positionTimestamp = positionTimes.get(record.definition.message);
@@ -682,14 +698,7 @@ export class FitDocument {
             repair: "none",
           });
         const t = record.timestamp;
-        if (t !== undefined) {
-          this.startTimestamp = Math.min(this.startTimestamp ?? t, t);
-          this.endTimestamp = Math.max(this.endTimestamp ?? t, t);
-          const source =
-            this.sources[this.index.subfiles[record.subfile].source ?? 0];
-          source.startTimestamp = Math.min(source.startTimestamp ?? t, t);
-          source.endTimestamp = Math.max(source.endTimestamp ?? t, t);
-        }
+        if (t !== undefined) addBounds(recordBounds, record.subfile, t);
         if (
           previous?.subfile === record.subfile &&
           t !== undefined &&
@@ -744,6 +753,17 @@ export class FitDocument {
         job.progress(id, this.index.records.length, "Indexing fields");
         await job.yield();
       }
+    }
+    for (const file of this.index.subfiles) {
+      const bounds =
+        recordBounds.get(file.index) ?? motionBounds.get(file.index);
+      if (!bounds) continue;
+      const [start, end] = bounds;
+      this.startTimestamp = Math.min(this.startTimestamp ?? start, start);
+      this.endTimestamp = Math.max(this.endTimestamp ?? end, end);
+      const source = this.sources[file.source ?? 0];
+      source.startTimestamp = Math.min(source.startTimestamp ?? start, start);
+      source.endTimestamp = Math.max(source.endTimestamp ?? end, end);
     }
     for (const [subfile, messages] of hrMessages) {
       try {

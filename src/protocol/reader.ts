@@ -203,16 +203,39 @@ export async function readFit(
     let messagesRead = 0;
     while (cursor < limit) {
       if (messagesRead++ % 128 === 0) await checkpoint(cursor);
+      if (
+        !crcValid &&
+        headerAt(cursor + 2) &&
+        (await verifiedHeader(cursor + 2))
+      ) {
+        // A damaged size can expose the checksum as a valid-looking data record.
+        // Verify the trailer against an inferred header before excluding it.
+        const header = bytes.slice(start, bodyStart);
+        const headerView = new DataView(header.buffer);
+        headerView.setUint32(4, cursor - bodyStart, true);
+        if (
+          headerSize >= 14 &&
+          headerView.getUint16(headerSize - 2, true) !== 0
+        )
+          headerView.setUint16(
+            headerSize - 2,
+            CrcCalculator.calculateCRC(header, 0, headerSize - 2),
+            true,
+          );
+        const boundaryCrc = new CrcCalculator();
+        boundaryCrc.addBytes(header, 0, header.length);
+        for (let p = bodyStart; p < cursor + 2; p += 65536) {
+          boundaryCrc.addBytes(bytes, p, Math.min(p + 65536, cursor + 2));
+          await checkpoint(p);
+        }
+        if (boundaryCrc.crc === 0) {
+          limit = cursor + 2;
+          file.end = limit;
+          break;
+        }
+      }
       if (cursor > bodyStart && headerAt(cursor)) {
         if (await verifiedHeader(cursor)) {
-          issue(
-            id,
-            start + 4,
-            start + 8,
-            "data-size",
-            "The data size crosses into a following FIT file.",
-            "header",
-          );
           limit = cursor;
           file.end = cursor;
           break;

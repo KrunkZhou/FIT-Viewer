@@ -12,6 +12,7 @@ interface Segment {
   times: Float64Array;
   records: Uint32Array;
 }
+const POSITION_FIELDS = new Set(["0", "1", "2", "5", "78"]);
 
 function lowerBound(times: Float64Array, target: number): number {
   let start = 0;
@@ -31,6 +32,23 @@ export class MapPlaybackIndex {
   async addTrack(track: Position[], route: number, job: Job): Promise<void> {
     const times = new Float64Array(track.length);
     const records = new Uint32Array(track.length);
+    for (let i = 0; i < track.length; i++) {
+      times[i] = track[i].time ?? NaN;
+      records[i] = track[i].record;
+      if (i % 4096 === 0) await job.yield();
+    }
+    await this.addColumns(times, records, route, job);
+  }
+
+  async addColumns(
+    inputTimes: Float64Array,
+    inputRecords: Uint32Array,
+    route: number,
+    job: Job,
+  ): Promise<void> {
+    // Own compact arrays so a short route never retains a mostly empty block.
+    const times = inputTimes.slice();
+    const records = inputRecords.slice();
     let count = 0;
     let first = 0;
     let start = Infinity;
@@ -44,19 +62,26 @@ export class MapPlaybackIndex {
         });
       first = count;
     };
-    for (let index = 0; index < track.length; index++) {
+    for (let index = 0; index < inputTimes.length; index++) {
       if (index % 4096 === 0) await job.yield();
-      const point = track[index];
-      if (point.time === undefined || !Number.isFinite(point.time)) continue;
+      const time = inputTimes[index];
+      if (!Number.isFinite(time)) continue;
       // Keep unsorted timestamp runs separate rather than inventing a route order.
-      if (count > first && point.time < times[count - 1]) finish();
-      times[count] = point.time;
-      records[count++] = point.record;
-      start = Math.min(start, point.time);
-      end = Math.max(end, point.time);
+      if (count > first && time < times[count - 1]) finish();
+      times[count] = time;
+      records[count++] = inputRecords[index];
+      start = Math.min(start, time);
+      end = Math.max(end, time);
     }
     finish();
-    if (count) this.routes.push({ route, start, end, count });
+    if (count) {
+      const existing = this.routes.at(-1);
+      if (existing?.route === route) {
+        existing.start = Math.min(existing.start, start);
+        existing.end = Math.max(existing.end, end);
+        existing.count += count;
+      } else this.routes.push({ route, start, end, count });
+    }
   }
 
   async position(
@@ -93,7 +118,7 @@ export class MapPlaybackIndex {
       }
     }
     if (!nearest) return null;
-    const cells = document.cells(nearest.record);
+    const cells = document.cells(nearest.record, true, POSITION_FIELDS);
     const coordinates = positionCoordinates(
       cells["0"]?.value,
       cells["1"]?.value,

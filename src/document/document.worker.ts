@@ -28,6 +28,10 @@ scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       requestId: request.requestId,
       documentId: request.documentId,
     });
+  const abortUnclaimedOutput = async (error: unknown) => {
+    if (request.kind === "export" && request.stream && !request.stream.locked)
+      await request.stream.abort(error).catch(() => {});
+  };
   if (request.kind === "cancel") {
     jobs.get(request.target)?.abort();
     send({ kind: "result", result: null });
@@ -53,6 +57,7 @@ scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     maps.clear();
     activeDocument = request.documentId;
   } else if (request.documentId !== activeDocument || !document) {
+    await abortUnclaimedOutput(new Error("This document is no longer active."));
     send({ kind: "error", message: "This document is no longer active." });
     return;
   }
@@ -107,7 +112,7 @@ scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         result = await current!.singletons(request.developer, job);
         break;
       case "chart":
-        result = await charts.query(current!, request.query, job);
+        result = await charts.query(current!, request.query, job, true);
         break;
       case "sensor-candidates":
         result = sensors(current!, request.developer);
@@ -172,13 +177,19 @@ scope.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         break;
       }
       case "export":
-        result = await exportDocument(current!, request.query, job);
+        result = await exportDocument(
+          current!,
+          request.query,
+          job,
+          request.stream,
+        );
         break;
     }
     if (controller.signal.aborted)
       throw new DOMException("Cancelled", "AbortError");
     send({ kind: "result", result });
   } catch (error) {
+    await abortUnclaimedOutput(error);
     send({
       kind: "error",
       message: (error as Error).message,

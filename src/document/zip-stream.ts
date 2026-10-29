@@ -7,6 +7,7 @@ export async function zipChunks(
   job: Job,
   phase: string,
   limit = Infinity,
+  consume?: (chunk: Uint8Array) => Promise<void>,
 ): Promise<Uint8Array[]> {
   const parts: Uint8Array[] = [];
   let size = 0;
@@ -34,12 +35,15 @@ export async function zipChunks(
           );
           return;
         }
-        parts.push(data);
+        if (!consume) parts.push(data);
         job.progress(metadata.percent, 100, phase);
         stream.pause();
-        job.yield().then(() => {
-          if (!settled) stream.resume();
-        }, finish);
+        (consume ? consume(data).then(() => job.yield()) : job.yield()).then(
+          () => {
+            if (!settled) stream.resume();
+          },
+          finish,
+        );
       })
       .on("error", finish)
       .on("end", () => finish());

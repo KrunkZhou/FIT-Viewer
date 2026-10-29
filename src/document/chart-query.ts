@@ -28,6 +28,19 @@ export function chartQueryKey(query: ChartQuery): string {
   ]);
 }
 
+export function chartBatchKey(query: ChartQuery): string | undefined {
+  const messages = query.sensors.map((key) => /^(\d+):/.exec(key)?.[1]);
+  const message = messages[0];
+  if (
+    !message ||
+    message === "164" ||
+    message === "165" ||
+    messages.some((value) => value !== message)
+  )
+    return;
+  return `${message}:${chartQueryKey({ ...query, sensors: [] })}`;
+}
+
 export function chartQueryGroups(
   sensors: Sensor[],
   query: ChartQuery,

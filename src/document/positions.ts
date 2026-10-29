@@ -16,7 +16,11 @@ export function positionFields(message: number) {
     latitude: latitude.num,
     longitude: longitude.num,
     name: fields.find((field) => field.name === "name")?.num,
-    timestamp: fields.find((field) => field.name === "timestamp")?.num,
+    timestamp: fields.find(
+      (field) =>
+        field.name ===
+        (latitude.name === "startPositionLat" ? "startTime" : "timestamp"),
+    )?.num,
   };
 }
 

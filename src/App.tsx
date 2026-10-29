@@ -33,6 +33,11 @@ import {
 } from "./document/input";
 import { captureDrop, collectDrop } from "./ui/file-drop";
 import { Downloads } from "./ui/download";
+import {
+  exportFilename,
+  saveDestination,
+  type SaveDestination,
+} from "./ui/save-destination";
 import type { DocumentSummary, ExportQuery, TimeRange } from "./model";
 import { ControlTooltip } from "./ui/ControlTooltip";
 import { Overview } from "./ui/Overview";
@@ -315,7 +320,13 @@ export default function App() {
     setError("");
     setNotice("");
     setProgress({ value: 0, phase: "Preparing download" });
+    let destination: SaveDestination | undefined;
     try {
+      destination = await saveDestination(
+        exportFilename(summary, query),
+        controller.signal,
+      );
+      controller.signal.throwIfAborted();
       const result = await client.export(
         {
           ...query,
@@ -324,9 +335,12 @@ export default function App() {
         },
         controller.signal,
         updateProgress,
+        destination?.stream,
       );
       if (id !== generation.current || controller.signal.aborted) return;
-      downloads.current.save(result);
+      if (destination) await destination.commit();
+      else downloads.current.save(result);
+      if (id !== generation.current || controller.signal.aborted) return;
       if (query.format === "fit")
         setNotice(
           `${result.filename.endsWith(".zip") ? "Recovered entries validated; see repair-report.json in the ZIP for per-file results." : result.partial ? "Partial recovery validated; missing or undecodable source data could not be recovered." : "Repaired file structure validated."}${result.partial && result.filename.endsWith(".zip") ? " Some entries remain partially recovered or unrecovered." : ""}${result.generated?.length ? ` Generated: ${result.generated.join(", ")}.` : ""}${result.unresolved?.length ? ` ${result.unresolved.length} warnings or unresolved omissions remain; inspect Diagnostics.` : ""}`,
@@ -335,6 +349,7 @@ export default function App() {
       if (id === generation.current && (error as Error).name !== "AbortError")
         setError((error as Error).message);
     } finally {
+      await destination?.abort().catch(() => {});
       if (id === generation.current) {
         exportGuard.current = false;
         setExporting(false);

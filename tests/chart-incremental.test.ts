@@ -9,6 +9,11 @@ import { ChartPlotCache } from "../src/ui/chart-plots";
 import { groupMotionAxes, groupSensors } from "../src/ui/chart-groups";
 import type { ChartData, ChartQuery, Sensor } from "../src/model";
 import { activity, file, type Field } from "./fixtures";
+import {
+  chartDisplayKey,
+  prepareChartDisplay,
+} from "../src/document/chart-display";
+import { idleJob } from "../src/protocol/reader";
 
 const query = (key: string, start?: number): ChartQuery => ({
   sensors: [key],
@@ -28,6 +33,105 @@ const result = (key: string): ChartData => ({
   end: 2,
 });
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+test("ordinary pending groups batch together while cancellations retain wanted siblings", async () => {
+  const { loader, calls } = controlled();
+  loader.select([query("20:3"), query("20:6"), query("20:2")]);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].query.sensors, ["20:3", "20:6", "20:2"]);
+  loader.select([query("20:3"), query("20:2")]);
+  assert.equal(calls[0].signal.aborted, false);
+  calls[0].resolve({
+    ...result("20:3"),
+    series: {
+      ...result("20:3").series,
+      ...result("20:6").series,
+      ...result("20:2").series,
+    },
+  });
+  await flush();
+  assert.deepEqual(Object.keys(loader.getSnapshot().series), ["20:3", "20:2"]);
+  loader.select([query("20:3"), query("20:2"), query("20:6")]);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[1].query.sensors, ["20:6"]);
+  loader.select([]);
+  assert.equal(calls[1].signal.aborted, true);
+  loader.dispose();
+});
+
+test("batching respects range, mode and motion boundaries", () => {
+  const { loader, calls } = controlled();
+  loader.select([query("20:3"), query("20:6", 10), query("165:5")]);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(
+    calls.map((call) => call.query.sensors),
+    [["20:3"], ["20:6"]],
+  );
+  loader.dispose();
+});
+
+test("worker-prepared source lines and XYZ domains are reused by the UI without sorting", async () => {
+  const sensors: Sensor[] = [0, 1].flatMap((source) =>
+    [5, 6, 7].map((field, i) => ({
+      key: `165:${field}:file:${source}`,
+      message: 165,
+      field: String(field),
+      source,
+      sourceName: `${source}.fit`,
+      name: `Accel ${["X", "Y", "Z"][i]} · ${source}.fit`,
+      label: `Accel ${["X", "Y", "Z"][i]}`,
+      units: "g",
+      axis: "time" as const,
+    })),
+  );
+  const data: ChartData = {
+    sensors,
+    series: Object.fromEntries(
+      sensors.map((sensor) => [
+        sensor.key,
+        [
+          { time: 3, value: 10 },
+          { time: 2, value: null },
+          { time: 1, value: 20 },
+        ],
+      ]),
+    ),
+    start: 1,
+    end: 3,
+  };
+  const prepared = await prepareChartDisplay(data, idleJob());
+  const display = Object.fromEntries(
+    prepared.display!.map((plot) => [chartDisplayKey(plot.members), plot]),
+  );
+  const groups = groupMotionAxes(groupSensors(sensors), true);
+  const cache = new ChartPlotCache();
+  const plots = cache.prepare(groups, data.series, () => "red", display);
+  const xyz = display[chartDisplayKey(sensors.map((sensor) => sensor.key))];
+  assert.equal(plots[0].points, xyz.points);
+  assert.equal(plots[0].lines[0].points, xyz.lines[0].points);
+  assert.deepEqual(
+    plots[0].points.map((point) => point.time),
+    [...plots[0].points.map((point) => point.time)].sort((a, b) => a - b),
+  );
+  assert.equal(plots[0].points.length, 12);
+  assert.ok(plots[0].points.every((point) => point.sourceName !== undefined));
+  assert.equal(
+    cache.prepare(groups, { ...data.series }, () => "red", display)[0],
+    plots[0],
+  );
+  const controller = new AbortController();
+  await assert.rejects(
+    prepareChartDisplay(data, {
+      ...idleJob(),
+      signal: controller.signal,
+      yield: async () => {
+        controller.abort();
+        controller.signal.throwIfAborted();
+      },
+    }),
+    { name: "AbortError" },
+  );
+});
 function controlled() {
   const calls: {
     query: ChartQuery;

@@ -4,6 +4,13 @@ import type { UpdateState } from "../src/updates";
 import type { DesktopPromptState } from "../src/desktop-prompts";
 
 contextBridge.exposeInMainWorld("fitDesktop", {
+  downloads: {
+    open: (name: string) => ipcRenderer.invoke("downloads:open", name),
+    write: (token: string, bytes: Uint8Array) =>
+      ipcRenderer.invoke("downloads:write", token, bytes),
+    finish: (token: string) => ipcRenderer.invoke("downloads:finish", token),
+    abort: (token: string) => ipcRenderer.invoke("downloads:abort", token),
+  },
   onBeforeClose(callback: () => void) {
     const listener = () => callback();
     ipcRenderer.on("files:confirm-close", listener);

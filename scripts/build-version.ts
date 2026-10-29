@@ -32,8 +32,8 @@ export function buildVersion({
       const count = git("rev-list", "--count", `${base}..HEAD`);
       return `${base.slice(1)}+${count}.${commit}`;
     }
-    return `${packageVersion === "0.0.0" ? "dev" : packageVersion}+${commit}`;
+    return `${packageVersion === "0.0.0" ? "0.0.0-dev" : packageVersion}+${commit}`;
   } catch {
-    return packageVersion === "0.0.0" ? "development" : packageVersion;
+    return packageVersion === "0.0.0" ? "0.0.0-dev" : packageVersion;
   }
 }

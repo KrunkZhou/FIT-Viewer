@@ -7,8 +7,11 @@ import type {
 } from "../model";
 import { fieldKey, readValue, valid, WIDTHS } from "../protocol/binary";
 import type { FitDocument } from "./document";
+import { timestampIso } from "../protocol/time";
 
-type ReadField = (record: RecordRef) => Cell;
+type ReadField = ((record: RecordRef) => Cell | undefined) & {
+  value: (record: RecordRef) => RawValue | undefined;
+};
 interface Plan {
   fields: (ReadField | undefined)[];
   fallback: Set<string>;
@@ -26,8 +29,7 @@ export class NumericReader {
     this.keys = [...keys];
   }
 
-  read(id: number): (Cell | undefined)[] {
-    const record = this.document.index.records[id];
+  private plan(record: RecordRef): Plan {
     let modes = this.plans.get(record.definition);
     if (!modes) this.plans.set(record.definition, (modes = new Map()));
     let plan = modes.get(record.compressed);
@@ -39,8 +41,10 @@ export class NumericReader {
           record.compressed &&
           wire.id === 253 &&
           wire.developer === undefined
-        )
+        ) {
+          locations.set("253", { wire, offset: 0 });
           continue;
+        }
         locations.set(fieldKey(wire), { wire, offset });
         offset += wire.size;
       }
@@ -60,7 +64,6 @@ export class NumericReader {
           location.wire.type >= 14 ||
           fixed.info.bitmask ||
           Object.keys(fixed.info.values ?? {}).length ||
-          ["dateTime", "localDateTime"].includes(fixed.info.type) ||
           (!this.developer &&
             key === "3" &&
             record.definition.message === 20 &&
@@ -71,13 +74,27 @@ export class NumericReader {
         }
         const { wire, offset } = location;
         const { info, array } = fixed;
-        const convert = (value: RawValue): number | null =>
-          typeof value === "number" && valid(value, wire.type)
-            ? info.semicircles
-              ? (value * 180) / 2147483648
-              : value / (info.scale || 1) - (info.offset ?? 0)
-            : null;
-        return (record) => {
+        const temporal =
+          info.type === "dateTime" || info.type === "localDateTime";
+        const convert = (value: RawValue): number | string | null => {
+          if (typeof value !== "number" || !valid(value, wire.type))
+            return null;
+          if (temporal) {
+            const text = timestampIso(value);
+            if (text === null) return null;
+            return info.type === "localDateTime" ? text.slice(0, -1) : text;
+          }
+          return info.semicircles
+            ? (value * 180) / 2147483648
+            : value / (info.scale || 1) - (info.offset ?? 0);
+        };
+        const read = (record: RecordRef): RawValue => {
+          if (
+            record.compressed &&
+            wire.id === 253 &&
+            wire.developer === undefined
+          )
+            return record.timestamp ?? null;
           const segment = this.document.index.bytes.segment(record.offset);
           let raw = readValue(
             segment.view,
@@ -86,16 +103,27 @@ export class NumericReader {
             record.definition.littleEndian,
           );
           if (array && !Array.isArray(raw)) raw = [raw];
-          return {
-            raw,
-            value: Array.isArray(raw) ? raw.map(convert) : convert(raw),
-            numeric: true,
-          };
+          return raw;
         };
+        const value = (raw: RawValue) =>
+          Array.isArray(raw) ? raw.map(convert) : convert(raw);
+        return Object.assign(
+          (record: RecordRef) => {
+            const raw = read(record);
+            return { raw, value: value(raw), numeric: !temporal };
+          },
+          { value: (record: RecordRef) => value(read(record)) },
+        );
       });
       plan = { fields, fallback };
       modes.set(record.compressed, plan);
     }
+    return plan;
+  }
+
+  read(id: number): (Cell | undefined)[] {
+    const record = this.document.index.records[id];
+    const plan = this.plan(record);
     if (
       !this.developer &&
       (this.document.memo.has(id) || this.document.components.has(id))
@@ -109,6 +137,29 @@ export class NumericReader {
     return plan.fields.map((read, i) =>
       read ? read(record) : fallback?.[this.keys[i]],
     );
+  }
+
+  /** Reuse a caller-owned row without allocating Cell objects on the map path. */
+  values(id: number, output: (RawValue | undefined)[]): void {
+    const record = this.document.index.records[id];
+    const plan = this.plan(record);
+    if (
+      !this.developer &&
+      (this.document.memo.has(id) || this.document.components.has(id))
+    ) {
+      const cells = this.document.cells(id, true, new Set(this.keys));
+      this.keys.forEach((key, i) => {
+        output[i] = cells[key]?.value;
+      });
+      return;
+    }
+    const fallback = plan.fallback.size
+      ? this.document.cells(id, !this.developer, plan.fallback)
+      : undefined;
+    for (let i = 0; i < plan.fields.length; i++) {
+      const read = plan.fields[i];
+      output[i] = read ? read.value(record) : fallback?.[this.keys[i]]?.value;
+    }
   }
 
   private component(
@@ -164,7 +215,7 @@ export class NumericReader {
       (Array.isArray(target.scale) ? target.scale[0] : target.scale) || 1;
     const targetOffset =
       (Array.isArray(target.offset) ? target.offset[0] : target.offset) || 0;
-    return (record) => {
+    const read = (record: RecordRef) => {
       const segment = this.document.index.bytes.segment(record.offset);
       const raw = readValue(
         segment.view,
@@ -172,9 +223,31 @@ export class NumericReader {
         parent.wire,
         record.definition.littleEndian,
       ) as number;
-      const expanded = (raw / scale - offset + targetOffset) * targetScale;
-      return this.document.metadata.cell(record, wire, expanded, fixed.info);
+      if (!valid(raw, parent.wire.type)) return;
+      return (raw / scale - offset + targetOffset) * targetScale;
     };
+    const info = fixed.info;
+    const convert = (expanded: number) =>
+      info.semicircles
+        ? (expanded * 180) / 2147483648
+        : expanded / (info.scale || 1) - (info.offset ?? 0);
+    return Object.assign(
+      (record: RecordRef) => {
+        const expanded = read(record);
+        if (expanded === undefined) return;
+        return {
+          raw: expanded,
+          value: convert(expanded),
+          numeric: true,
+        };
+      },
+      {
+        value: (record: RecordRef) => {
+          const expanded = read(record);
+          return expanded === undefined ? undefined : convert(expanded);
+        },
+      },
+    );
   }
 }
 import { Profile } from "@garmin/fitsdk";

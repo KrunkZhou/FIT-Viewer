@@ -3,6 +3,7 @@ import test from "node:test";
 import { Worker } from "node:worker_threads";
 import type {
   DocumentSummary,
+  ChartData,
   RequestPayload,
   TablePage,
   ExportResult,
@@ -48,6 +49,113 @@ function wait(
     worker.once("error", fail);
   });
 }
+
+test("rejected worker exports abort transferred destinations before formatting starts", async () => {
+  const w = worker();
+  try {
+    const opened = wait(w, (m) => m.requestId === 1 && m.kind !== "progress");
+    w.postMessage({
+      kind: "open",
+      file: new File([activity(10).slice()], "test.fit"),
+      limit: 1e8,
+      requestId: 1,
+      documentId: 1,
+    });
+    assert.equal((await opened).kind, "result");
+    for (const [requestId, documentId, source] of [
+      [2, 0, undefined],
+      [3, 1, 99],
+    ] as const) {
+      let aborted = false;
+      const stream = new WritableStream<Uint8Array>({
+        abort() {
+          aborted = true;
+        },
+      });
+      const response = wait(
+        w,
+        (m) => m.requestId === requestId && m.kind === "error",
+      );
+      w.postMessage(
+        {
+          kind: "export",
+          query: { format: "csv" },
+          stream,
+          requestId,
+          documentId,
+          source,
+        } satisfies WorkerRequest,
+        [stream],
+      );
+      await response;
+      // Abort acknowledgements can arrive on a different transferred port.
+      for (let i = 0; i < 50 && !aborted; i++)
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      assert.equal(aborted, true, "Rejected export retained its output stream");
+    }
+  } finally {
+    await w.terminate();
+  }
+});
+
+test("worker chart responses include prepared cross-file display lines", async () => {
+  const w = worker();
+  let id = 0;
+  const request = (payload: RequestPayload) => {
+    const requestId = ++id;
+    const pending = wait(
+      w,
+      (message) =>
+        message.requestId === requestId && message.kind !== "progress",
+    );
+    w.postMessage({
+      ...payload,
+      requestId,
+      documentId: 1,
+    } satisfies WorkerRequest);
+    return pending;
+  };
+  try {
+    // Node clones File as Blob; ZIP entry names survive the test transport.
+    const zip = new JSZip();
+    zip.file("a.fit", activity(30));
+    zip.file("b.fit", activity(40));
+    await request({
+      kind: "open",
+      file: new File(
+        [await zip.generateAsync({ type: "arraybuffer" })],
+        "workspace.zip",
+      ),
+      limit: 1e8,
+    });
+    const response = await request({
+      kind: "chart",
+      query: {
+        sensors: ["20:3:file:0", "20:3:file:1"],
+        developer: false,
+        width: 128,
+      },
+    });
+    assert.equal(response.kind, "result");
+    if (response.kind !== "result") throw new Error("Chart failed");
+    const result = response.result as ChartData;
+    assert.equal(result.display?.length, 1);
+    const display = result.display![0];
+    assert.equal(display.lines.length, 1);
+    assert.equal(display.lines[0].points, display.points);
+    assert.deepEqual(
+      new Set(display.points.map((point) => point.sourceName)),
+      new Set(["a.fit", "b.fit"]),
+    );
+    assert.ok(
+      display.points.every(
+        (point, i) => !i || point.time >= display.points[i - 1].time,
+      ),
+    );
+  } finally {
+    await w.terminate();
+  }
+});
 test("map timeline queries use source samples and reject stale map indexes after filtering or replacement", async () => {
   const w = worker();
   const request = (

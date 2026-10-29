@@ -24,7 +24,7 @@ test("web builds prefer the shared release version before its tag exists, with a
     git("config", "core.hooksPath", "/dev/null");
     git("commit", "--allow-empty", "-m", "initial");
     const first = git("rev-parse", "--short=8", "HEAD");
-    assert.equal(version(), `dev+${first}`);
+    assert.equal(version(), `0.0.0-dev+${first}`);
     git("tag", "v0.0.16");
     assert.equal(version(), "0.0.16");
     git("tag", "commit-legacy");
@@ -44,7 +44,7 @@ test("web builds prefer the shared release version before its tag exists, with a
 test("source archives without Git use a real package version or an explicit development label", () => {
   const cwd = mkdtempSync(join(tmpdir(), "fitviewer-no-git-"));
   try {
-    assert.equal(buildVersion({ cwd, packageVersion: "0.0.0" }), "development");
+    assert.equal(buildVersion({ cwd, packageVersion: "0.0.0" }), "0.0.0-dev");
     assert.equal(buildVersion({ cwd, packageVersion: "1.2.3" }), "1.2.3");
     assert.equal(
       buildVersion({ cwd, packageVersion: "0.0.0", releaseVersion: "2.3.4" }),

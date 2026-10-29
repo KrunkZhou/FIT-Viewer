@@ -1,5 +1,5 @@
 import { CrcCalculator, Profile } from "@garmin/fitsdk";
-import { TYPE_NAMES, WIDTHS, writeScalar } from "./binary";
+import { TYPE_NAMES, WIDTHS, readValue, valid, writeScalar } from "./binary";
 import type { Job } from "../model";
 
 export function encodeMessage(
@@ -25,11 +25,30 @@ export function encodeMessage(
   let cursor = definitionSize + 1;
   result[definitionSize] = 15;
   fields.forEach((field, i) => {
+    if (
+      field.type < 0 ||
+      field.type === 7 ||
+      (typeof field.value === "number" &&
+        (!Number.isFinite(field.value) ||
+          (field.type !== 8 &&
+            field.type !== 9 &&
+            !Number.isSafeInteger(field.value))))
+    )
+      throw new RangeError(`Unrepresentable FIT value ${message}:${field.id}`);
     result.set(
       [field.id, field.size, field.type | (field.size > 1 ? 128 : 0)],
       6 + i * 3,
     );
     writeScalar(view, cursor, field.type, field.value);
+    const decoded = readValue(view, cursor, field, true);
+    const expected =
+      typeof decoded === "bigint" ? BigInt(field.value) : Number(field.value);
+    if (
+      Array.isArray(decoded) ||
+      !valid(decoded, field.type) ||
+      (field.type !== 8 && decoded !== expected)
+    )
+      throw new RangeError(`Unrepresentable FIT value ${message}:${field.id}`);
     cursor += field.size;
   });
   return result;

@@ -1,6 +1,7 @@
 import { Profile } from "@garmin/fitsdk";
 import type { RawValue, RecordRef } from "../model";
-import { WIDTHS } from "../protocol/binary";
+import { valid, WIDTHS } from "../protocol/binary";
+import { activeField } from "../metadata/official";
 
 export function expandComponents(
   record: RecordRef,
@@ -11,7 +12,7 @@ export function expandComponents(
   const output: Record<string, RawValue> = {};
   for (const wire of record.definition.fields) {
     if (wire.developer !== undefined) continue;
-    const definition = profile?.fields[wire.id];
+    const definition = activeField(record.definition.message, wire.id, raw);
     const value = raw[String(wire.id)];
     if (
       !definition?.hasComponents ||
@@ -34,7 +35,7 @@ export function expandComponents(
           (typeof v !== "number" && typeof v !== "bigint") ||
           (typeof v === "number" && !Number.isFinite(v)),
       ) ||
-      (wire.type === 13 && values.every((v) => v === 255))
+      values.every((v) => !valid(v, wire.type))
     )
       continue;
     let packed = 0n;

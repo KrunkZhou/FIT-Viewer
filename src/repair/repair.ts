@@ -2,6 +2,9 @@ import { FitDocument } from "../document/document";
 import { numberValue } from "../protocol/binary";
 import { idleJob, readFit } from "../protocol/reader";
 import { encodeMessage, wrapBodyCooperative } from "../protocol/writer";
+import { Profile } from "@garmin/fitsdk";
+import { summaryIndex } from "./summary-index";
+import { Metadata } from "../metadata/profile";
 
 export interface RepairOutput {
   bytes: Uint8Array;
@@ -15,6 +18,8 @@ interface Candidate {
   label: string;
   values: Record<string, number>;
 }
+const candidateCache = new WeakMap<FitDocument, Map<number, Candidate[]>>();
+
 export async function summaryCandidates(
   document: FitDocument,
   subfile: number,
@@ -23,46 +28,39 @@ export async function summaryCandidates(
   const { index } = document;
   const file = index.subfiles[subfile];
   if (file.type !== 4) return [];
-  let start: number | undefined;
-  let end: number | undefined;
-  let last = -1;
-  let count = 0;
-  const ids = index.messages.get(20) ?? [];
-  for (let i = 0; i < ids.length; i++) {
-    const record = index.records[ids[i]];
-    if (record.subfile === subfile) {
-      if (
-        record.timestamp === undefined ||
-        (end !== undefined && record.timestamp < end)
-      )
-        return [];
-      start ??= record.timestamp;
-      end = record.timestamp;
-      last = ids[i];
-      count++;
-    }
-    if (i % 4096 === 0) await job.yield();
-  }
-  if (count < 2 || start === undefined || end === undefined) return [];
+  job.signal.throwIfAborted();
+  const cached = candidateCache.get(document)?.get(subfile);
+  if (cached) return cached;
+  const evidence = (await summaryIndex(document, job))[subfile];
+  const { start, end, last, count, messages } = evidence;
+  const has = (message: number) => messages.has(message);
+  if (has(18) && has(34)) return [];
+  if (
+    !evidence.ordered ||
+    count < 2 ||
+    start === undefined ||
+    end === undefined
+  )
+    return [];
   const sports = new Set<number>();
+  let checked = 0;
   for (const [message, field] of [
     [12, "0"],
     [18, "5"],
     [19, "25"],
   ] as const) {
-    for (const id of index.messages.get(message) ?? []) {
-      if (index.records[id].subfile !== subfile) continue;
+    for (const id of messages.get(message) ?? []) {
       const value = numberValue(document.raw(id)[field]);
       if (value !== undefined && value !== 255) sports.add(value);
+      if (++checked % 512 === 0) await job.yield();
     }
   }
   if (sports.size !== 1) return [];
   const sport = [...sports][0];
-  const has = (message: number) =>
-    (index.messages.get(message) ?? []).some(
-      (id) => index.records[id].subfile === subfile,
-    );
   const elapsed = (end - start) * 1000;
+  // The all-ones value is FIT's invalid sentinel, not a representable duration.
+  if (!has(18) && (!Number.isSafeInteger(elapsed) || elapsed > 0xfffffffe))
+    return [];
   const distance = numberValue(document.raw(last)["5"]);
   const summary = {
     timestamp: end,
@@ -81,12 +79,15 @@ export async function summaryCandidates(
       values: { ...summary, messageIndex: 0, event: 9, eventType: 1 },
     });
   if (!has(18)) {
-    const lapIds = (index.messages.get(19) ?? []).filter(
-      (id) => index.records[id].subfile === subfile,
-    );
+    const lapIds = messages.get(19) ?? [];
+    if (lapIds.length >= 65535) return output;
     let firstLapIndex = 0;
     if (lapIds.length) {
-      const laps = lapIds.map((id) => document.raw(id));
+      const laps = [];
+      for (const id of lapIds) {
+        laps.push(document.raw(id));
+        if (laps.length % 512 === 0) await job.yield();
+      }
       const indexes = laps.map((lap) => numberValue(lap["254"]));
       if (
         indexes.some((value) => value === undefined || value === 65535) ||
@@ -122,21 +123,22 @@ export async function summaryCandidates(
       },
     });
   }
-  if (!has(34))
+  const numSessions = messages.get(18)?.length || 1;
+  if (!has(34) && numSessions < 65535)
     output.push({
       message: 34,
       label: "Activity",
       values: {
         timestamp: end,
-        numSessions:
-          (index.messages.get(18) ?? []).filter(
-            (id) => index.records[id].subfile === subfile,
-          ).length || 1,
+        numSessions,
         type: 0,
         event: 26,
         eventType: 1,
       },
     });
+  const cache = candidateCache.get(document) ?? new Map<number, Candidate[]>();
+  cache.set(subfile, output);
+  candidateCache.set(document, cache);
   return output;
 }
 
@@ -144,9 +146,18 @@ export async function addSummaryDiagnostics(
   document: FitDocument,
   job = idleJob(),
 ): Promise<void> {
+  const evidence = await summaryIndex(document, job);
+  const diagnosticIds = new Set(document.index.diagnostics.map((d) => d.id));
+  let diagnosticCount = document.index.diagnostics.length;
   for (const file of document.index.subfiles) {
+    if (file.index % 128 === 0) await job.yield();
     if (file.type !== 4) continue;
+    const { messages, start, end } = evidence[file.index];
+    if (messages.has(18) && messages.has(34)) continue;
     const candidates = await summaryCandidates(document, file.index, job);
+    // Another cooperative job may have added diagnostics while this one yielded.
+    while (diagnosticCount < document.index.diagnostics.length)
+      diagnosticIds.add(document.index.diagnostics[diagnosticCount++].id);
     for (const [message, label] of [
       [19, "Lap"],
       [18, "Session"],
@@ -154,29 +165,33 @@ export async function addSummaryDiagnostics(
     ] as const) {
       const diagnosticId = `summary:${file.index}:${message}`;
       if (
-        document.index.diagnostics.some((d) => d.id === diagnosticId) ||
-        (document.index.messages.get(message) ?? []).some(
-          (id) => document.index.records[id].subfile === file.index,
-        ) ||
-        (message === 19 &&
-          (document.index.messages.get(18) ?? []).some(
-            (id) => document.index.records[id].subfile === file.index,
-          ))
+        diagnosticIds.has(diagnosticId) ||
+        messages.has(message) ||
+        (message === 19 && messages.has(18))
       )
         continue;
       const recoverable = candidates.some(
         (candidate) => candidate.message === message,
       );
+      const reason =
+        !messages.has(18) &&
+        start !== undefined &&
+        end !== undefined &&
+        (end - start) * 1000 > 0xfffffffe
+          ? "Elapsed time exceeds the FIT summary field range; this omission cannot be repaired automatically."
+          : "Required source evidence is incomplete or ambiguous; this omission cannot be repaired automatically.";
+      diagnosticIds.add(diagnosticId);
       document.index.diagnostics.push({
         id: diagnosticId,
         severity: "warning",
         code: "missing-summary",
-        message: `${label} summary is missing. ${recoverable ? "A summary can be derived from retained activity records; timer time will remain unknown." : "Required source evidence is incomplete or ambiguous; this omission cannot be repaired automatically."}`,
+        message: `${label} summary is missing. ${recoverable ? "A summary can be derived from retained activity records; timer time will remain unknown." : reason}`,
         subfile: file.index,
         offset: file.bodyEnd,
         end: file.bodyEnd,
         repair: recoverable ? "summary" : "none",
       });
+      diagnosticCount++;
     }
   }
 }
@@ -188,6 +203,7 @@ export async function repair(
   const pieces: Uint8Array[] = [];
   const generated: string[] = [];
   await addSummaryDiagnostics(document, job);
+  const evidence = await summaryIndex(document, job);
   for (const file of document.index.subfiles) {
     await job.yield();
     const prefix = document.index.bytes.subarray(file.bodyStart, file.bodyEnd);
@@ -216,10 +232,25 @@ export async function repair(
     if (
       verified.diagnostics.some((d) => d.severity === "error") ||
       verified.records.length !==
-        document.index.records.filter((r) => r.subfile === file.index).length +
-          candidates.length
+        evidence[file.index].recordCount + candidates.length
     )
       throw new Error("The repaired file failed structural validation.");
+    const decoded = new Metadata(verified);
+    for (let i = 0; i < candidates.length; i++) {
+      const candidate = candidates[i];
+      const record = verified.records[evidence[file.index].recordCount + i];
+      const values = decoded.raw(record);
+      if (
+        record.definition.message !== candidate.message ||
+        Object.entries(candidate.values).some(([name, value]) => {
+          const field = Object.values(
+            Profile.messages[candidate.message].fields,
+          ).find((field) => field.name === name)!;
+          return values[String(field.num)] !== value;
+        })
+      )
+        throw new Error("The repaired file failed generated-value validation.");
+    }
     const retained = output.subarray(
       file.headerSize,
       file.headerSize + prefix.length,

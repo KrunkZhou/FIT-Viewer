@@ -7,6 +7,7 @@ import type {
   MapData,
   Position,
   Sensor,
+  RawValue,
   TimeRange,
 } from "../model";
 import { hasTimeRange, inTimeRange, intersectTimeRanges } from "./time-range";
@@ -25,6 +26,10 @@ import { chartPointBudget } from "./chart-sampling";
 import { NumericReader } from "./numeric-reader";
 import { PointSampler } from "./point-sampler";
 import { recordTimeSpans } from "./record-time-index";
+import { ordinaryChart } from "./ordinary-chart";
+import { MapTrack } from "./map-track";
+import { Profile } from "@garmin/fitsdk";
+import { valid } from "../protocol/binary";
 
 const candidatesByDocument = new WeakMap<FitDocument, Map<boolean, Sensor[]>>();
 export function sensors(document: FitDocument, developer: boolean): Sensor[] {
@@ -44,6 +49,9 @@ export function sensors(document: FitDocument, developer: boolean): Sensor[] {
       if (message.id !== 20 && !hasTime && !developer) continue;
       for (const field of document.getFields(message.id, developer, source)) {
         if (
+          (!developer &&
+            !field.developer &&
+            Profile.messages[message.id]?.fields[field.id]?.subFields.length) ||
           field.id === 253 ||
           field.type === "string" ||
           field.type === "dateTime" ||
@@ -180,7 +188,7 @@ export async function* chartPoints(
   range?: TimeRange,
 ): AsyncGenerator<ChartPoint> {
   if (isMotionSensor(sensor)) {
-    yield* motionPoints(document, sensor, developer, job);
+    yield* motionPoints(document, sensor, developer, job, range);
     return;
   }
   const [message, ...parts] = sensor.key.split(":");
@@ -250,7 +258,52 @@ export async function chart(
   query: ChartQuery,
   job = idleJob(),
   full = false,
+  bounds?: Map<string, [number, number]>,
 ): Promise<ChartData> {
+  const requestedOrdinary = sensors(document, query.developer).filter(
+    (sensor) => query.sensors.includes(sensor.key) && !isMotionSensor(sensor),
+  );
+  let ordinaryPrepared: Awaited<ReturnType<typeof ordinaryChart>> | undefined;
+  if (!full && requestedOrdinary.length) {
+    const identities = new Set<string>();
+    let sharedBudget = false;
+    for (const sensor of requestedOrdinary) {
+      const identity = JSON.stringify([
+        sensor.message,
+        sensor.field,
+        sensor.units,
+        sensor.axis,
+        sensor.label ?? sensor.name,
+      ]);
+      if (identities.has(identity)) sharedBudget = true;
+      identities.add(identity);
+    }
+    if (
+      sharedBudget ||
+      query.start !== undefined ||
+      query.end !== undefined ||
+      hasTimeRange(query.dates)
+    )
+      await chartSensors(
+        document,
+        query.developer,
+        job,
+        requestedOrdinary.map((sensor) => sensor.key),
+      );
+    const statistics = sampleStatistics(document, query.developer);
+    const selected = requestedOrdinary.map((sensor) => ({
+      ...sensor,
+      pointCount: statistics.get(sensor.key)?.count,
+    }));
+    ordinaryPrepared = await ordinaryChart(
+      document,
+      selected,
+      await displayWidths(document, selected, query, job),
+      query,
+      job,
+      bounds,
+    );
+  }
   const requestedMotion = sensors(document, query.developer).filter(
     (sensor) => query.sensors.includes(sensor.key) && isMotionSensor(sensor),
   );
@@ -273,8 +326,8 @@ export async function chart(
   );
   const selected = available.filter((s) => query.sensors.includes(s.key));
   const series: ChartData["series"] = {};
-  let start = Infinity;
-  let end = -Infinity;
+  let start = ordinaryPrepared?.start ?? Infinity;
+  let end = ordinaryPrepared?.end ?? -Infinity;
   const motion = selected.filter(isMotionSensor);
   if (motion.length && !full) {
     const data =
@@ -287,25 +340,16 @@ export async function chart(
             job,
           );
     Object.assign(series, data.series);
-    start = data.start;
-    end = data.end;
+    start = Math.min(start, data.start);
+    end = Math.max(end, data.end);
   }
-  const ordinary = selected.filter((s) => full || !isMotionSensor(s));
-  const widths = full
-    ? new Map<string, number>()
-    : await displayWidths(document, ordinary, query, job);
-  for (const sensor of ordinary) {
+  if (ordinaryPrepared) Object.assign(series, ordinaryPrepared.series);
+  for (const sensor of full ? selected : []) {
     const points: ChartPoint[] = [];
-    const sampler = full
-      ? undefined
-      : new PointSampler(
-          chartPointBudget(widths.get(sensor.key) ?? query.width, query.detail),
-        );
     let accepted = false;
     const add = (point: ChartPoint) => {
       accepted = true;
-      if (sampler) sampler.add(point);
-      else points.push(point);
+      points.push(point);
     };
     let excluded = false;
     if (sensor.axis === "sample" && hasTimeRange(query.dates)) {
@@ -344,10 +388,10 @@ export async function chart(
       start = Math.min(start, time);
       end = Math.max(end, time);
     }
-    series[sensor.key] = sampler ? sampler.finish() : points;
+    series[sensor.key] = points;
   }
   return {
-    sensors: available,
+    sensors: query.sensors.length ? selected : available,
     series,
     start: Number.isFinite(start) ? start : 0,
     end: Number.isFinite(end) ? end : 0,
@@ -376,17 +420,27 @@ async function displayWidths(
       if (fraction === undefined) {
         const ids = document.recordIds(message, sensor.source);
         let visible = 0;
-        for (let i = 0; i < ids.length; i++) {
-          const time = document.index.records[ids[i]].timestamp;
-          if (
-            time !== undefined &&
-            (query.start === undefined || time >= query.start) &&
-            (query.end === undefined || time <= query.end) &&
-            inTimeRange(time, query.dates)
-          )
-            visible++;
-          if (i % 1024 === 0) await job.yield();
-        }
+        const spans = await recordTimeSpans(
+          document,
+          ids,
+          {
+            ...intersectTimeRanges(query, query.dates),
+            intervals: query.dates?.intervals,
+          },
+          job,
+        );
+        for (const [from, to] of spans)
+          for (let i = from; i < to; i++) {
+            const time = document.index.records[ids[i]].timestamp;
+            if (
+              time !== undefined &&
+              (query.start === undefined || time >= query.start) &&
+              (query.end === undefined || time <= query.end) &&
+              inTimeRange(time, query.dates)
+            )
+              visible++;
+            if (i % 1024 === 0) await job.yield();
+          }
         fraction = visible / Math.max(1, ids.length);
         visibility.set(key, fraction);
       }
@@ -415,62 +469,71 @@ async function displayWidths(
   return widths;
 }
 
-async function simplify(
-  track: Position[],
-  tolerance: number,
-  job: Job,
-): Promise<Position[]> {
-  if (track.length < 3) return track;
-  const keep = new Uint8Array(track.length);
-  keep[0] = keep[track.length - 1] = 1;
-  const stack: [number, number][] = [[0, track.length - 1]];
-  while (stack.length) {
-    const [first, last] = stack.pop()!;
-    const a = track[first];
-    const b = track[last];
-    let farthest = -1;
-    let maximum = tolerance * tolerance;
-    const dx = b.lon - a.lon;
-    const dy = b.lat - a.lat;
-    const length = dx * dx + dy * dy;
-    for (let i = first + 1; i < last; i++) {
-      const point = track[i];
-      const fraction = length
-        ? Math.max(
-            0,
-            Math.min(
-              1,
-              ((point.lon - a.lon) * dx + (point.lat - a.lat) * dy) / length,
-            ),
-          )
-        : 0;
-      const distance =
-        (point.lon - a.lon - fraction * dx) ** 2 +
-        (point.lat - a.lat - fraction * dy) ** 2;
-      if (distance > maximum) {
-        maximum = distance;
-        farthest = i;
-      }
-      if (i % 4096 === 0) await job.yield();
-    }
-    if (farthest !== -1) {
-      keep[farthest] = 1;
-      stack.push([first, farthest], [farthest, last]);
-    }
-  }
-  return track.filter((_, i) => keep[i]);
-}
-
-export async function* mapPositions(
-  document: FitDocument,
-  job: Job,
-  dates?: TimeRange,
-): AsyncGenerator<{
+interface MapEntry {
   message: number;
   subfile: number;
   route?: number;
   point?: Position & { name?: string };
-}> {
+}
+async function positionRecordIds(
+  document: FitDocument,
+  job: Job,
+  dates?: TimeRange,
+  messages?: ReadonlySet<number>,
+): Promise<{ ids: Generator<number>; gaps: Set<number> }> {
+  const gaps = new Set<number>();
+  const lists = [...document.index.messages]
+    .filter(
+      ([message]) =>
+        (!messages || messages.has(message)) && positionFields(message),
+    )
+    .map(([message, ids]) => ({ message, ids }));
+  const iterators: Generator<number>[] = [];
+  for (const { message, ids } of lists) {
+    const spans =
+      message === 20
+        ? await recordTimeSpans(document, ids, dates, job)
+        : [[0, ids.length]];
+    function* selected() {
+      let previousEnd = 0;
+      for (const [from, to] of spans) {
+        // A skipped time block must still break the displayed route.
+        if (message === 20 && from > previousEnd) gaps.add(ids[from]);
+        for (let i = from; i < to; i++) yield ids[i];
+        previousEnd = to;
+      }
+    }
+    iterators.push(selected());
+  }
+  function* merge() {
+    if (iterators.length === 1) {
+      yield* iterators[0];
+      return;
+    }
+    const heads = iterators.map(
+      (iterator) => iterator.next().value ?? Infinity,
+    );
+    for (;;) {
+      let next = Infinity,
+        chosen = -1;
+      for (let i = 0; i < heads.length; i++)
+        if (heads[i] < next) {
+          next = heads[i];
+          chosen = i;
+        }
+      if (chosen < 0) return;
+      yield next;
+      heads[chosen] = iterators[chosen].next().value ?? Infinity;
+    }
+  }
+  return { ids: merge(), gaps };
+}
+async function* mapPositionBatches(
+  document: FitDocument,
+  job: Job,
+  dates?: TimeRange,
+  messages?: ReadonlySet<number>,
+): AsyncGenerator<MapEntry[]> {
   const maxGpsGapSeconds = 30;
   let route = -1;
   let previous: { subfile: number; time?: number } | undefined;
@@ -485,11 +548,22 @@ export async function* mapPositions(
       keys: Set<string>;
       numericKeys: string[];
       reader: NumericReader;
+      values: (RawValue | undefined)[];
+      latitudeSlot: number;
+      longitudeSlot: number;
+      elevationSlot: number;
+      altitudeSlot: number;
+      distanceSlot: number;
+      nameSlot: number;
     }
   >();
   for (const definition of document.index.definitions) {
     const info = positionFields(definition.message);
-    if (info && !fields.has(definition.message)) {
+    if (
+      info &&
+      (!messages || messages.has(definition.message)) &&
+      !fields.has(definition.message)
+    ) {
       const keys = new Set(
         [
           info.latitude,
@@ -509,11 +583,29 @@ export async function* mapPositions(
         keys,
         numericKeys,
         reader: new NumericReader(document, numericKeys, false),
+        values: [],
+        latitudeSlot: numericKeys.indexOf(String(info.latitude)),
+        longitudeSlot: numericKeys.indexOf(String(info.longitude)),
+        elevationSlot: numericKeys.indexOf("78"),
+        altitudeSlot: numericKeys.indexOf("2"),
+        distanceSlot: numericKeys.indexOf("5"),
+        nameSlot: numericKeys.indexOf(String(info.name)),
       });
     }
   }
-  for (let id = 0; id < document.index.records.length; id++) {
-    if (id % 512 === 0) {
+  let batch: MapEntry[] = [];
+  let count = 0;
+  const selected = await positionRecordIds(document, job, dates, messages);
+  for (const id of selected.ids) {
+    if (selected.gaps.has(id)) {
+      previous = undefined;
+      missingGps = false;
+    }
+    if (count++ % 512 === 0) {
+      if (batch.length) {
+        yield batch;
+        batch = [];
+      }
       job.progress(id, document.index.records.length, "Preparing map data");
       await job.yield();
     }
@@ -523,6 +615,7 @@ export async function* mapPositions(
     // Most GPS records carry an indexed timestamp; reject offscreen dates
     // before decoding coordinates, elevation or unrelated values.
     if (
+      info.timestamp === 253 &&
       record.timestamp !== undefined &&
       !inTimeRange(record.timestamp, dates)
     ) {
@@ -530,49 +623,59 @@ export async function* mapPositions(
         previous = undefined;
         missingGps = false;
       }
-      yield { message: record.definition.message, subfile: record.subfile };
+      batch.push({
+        message: record.definition.message,
+        subfile: record.subfile,
+      });
       continue;
     }
-    const cells =
-      record.timestamp === undefined
-        ? document.cells(id, true, info.keys)
-        : Object.fromEntries(
-            info.reader.read(id).map((cell, i) => [info.numericKeys[i], cell]),
-          );
-    const timestamp =
-      info.timestamp === undefined
-        ? undefined
-        : cells[String(info.timestamp)]?.raw;
-    const time =
-      record.timestamp ??
-      (typeof timestamp === "number" && Number.isFinite(timestamp)
-        ? timestamp
-        : undefined);
+    const values = info.values;
+    let time = info.timestamp === 253 ? record.timestamp : undefined;
+    if (time === undefined) {
+      const cells = document.cells(id, true, info.keys);
+      for (let i = 0; i < info.numericKeys.length; i++)
+        values[i] = cells[info.numericKeys[i]]?.value;
+      const timestamp =
+        info.timestamp === undefined
+          ? undefined
+          : cells[String(info.timestamp)]?.raw;
+      if (
+        typeof timestamp === "number" &&
+        valid(timestamp, 6) &&
+        cells[String(info.timestamp)]?.value !== null
+      )
+        time = timestamp;
+    } else info.reader.values(id, values);
     if (!inTimeRange(time, dates)) {
       if (record.definition.message === 20) {
         previous = undefined;
         missingGps = false;
       }
-      yield { message: record.definition.message, subfile: record.subfile };
+      batch.push({
+        message: record.definition.message,
+        subfile: record.subfile,
+      });
       continue;
     }
     const coordinates = positionCoordinates(
-      cells[String(info.latitude)]?.value,
-      cells[String(info.longitude)]?.value,
+      values[info.latitudeSlot],
+      values[info.longitudeSlot],
     );
     if (!coordinates) {
       if (record.definition.message === 20) missingGps = true;
-      yield { message: record.definition.message, subfile: record.subfile };
+      batch.push({
+        message: record.definition.message,
+        subfile: record.subfile,
+      });
       continue;
     }
     const elevation =
       record.definition.message === 20
-        ? (cells["78"]?.value ?? cells["2"]?.value)
+        ? (values[info.elevationSlot] ?? values[info.altitudeSlot])
         : undefined;
     const distance =
-      record.definition.message === 20 ? cells["5"]?.value : undefined;
-    const name =
-      info.name === undefined ? undefined : cells[String(info.name)]?.value;
+      record.definition.message === 20 ? values[info.distanceSlot] : undefined;
+    const name = values[info.nameSlot];
     if (record.definition.message === 20) {
       // Only bridge GPS dropouts whose valid endpoints prove a short gap.
       if (
@@ -590,7 +693,7 @@ export async function* mapPositions(
       previous = { subfile: record.subfile, time };
       missingGps = false;
     }
-    yield {
+    batch.push({
       message: record.definition.message,
       subfile: record.subfile,
       ...(record.definition.message === 20 ? { route } : {}),
@@ -602,8 +705,19 @@ export async function* mapPositions(
         ...(typeof distance === "number" ? { distance } : {}),
         ...(typeof name === "string" ? { name } : {}),
       },
-    };
+    });
   }
+  if (batch.length) yield batch;
+}
+
+export async function* mapPositions(
+  document: FitDocument,
+  job: Job,
+  dates?: TimeRange,
+  messages?: ReadonlySet<number>,
+): AsyncGenerator<MapEntry> {
+  for await (const batch of mapPositionBatches(document, job, dates, messages))
+    yield* batch;
 }
 
 export async function mapData(
@@ -614,51 +728,52 @@ export async function mapData(
   playback?: MapPlaybackIndex,
 ): Promise<MapData> {
   const data: MapData = { tracks: [], points: [] };
-  let track: Position[] = [];
+  let track = new MapTrack();
   let route = -1;
   const finish = async () => {
     if (track.length) {
-      await playback?.addTrack(track, data.tracks.length, job);
-      data.tracks.push(full ? track : await simplify(track, 0.00002, job));
+      if (playback) await track.playback(playback, data.tracks.length, job);
+      data.tracks.push(await track.display(full, job));
       if (document.sources.length > 1) {
         data.routeNames ??= [];
         data.routeNames.push(
-          `${document.sourceName(document.index.records[track[0].record].subfile)} · Route ${data.tracks.length}`,
+          `${document.sourceName(document.index.records[track.point(0).record].subfile)} · Route ${data.tracks.length}`,
         );
       }
     }
-    track = [];
+    track = new MapTrack();
   };
   let kilometre = 0;
-  for await (const { message, route: nextRoute, point } of mapPositions(
-    document,
-    job,
-    dates,
-  )) {
-    if (!point) continue;
-    if (message === 20) {
-      if (route !== nextRoute) {
-        await finish();
-        kilometre = 0;
-      }
-      route = nextRoute!;
-      track.push(point);
-      if (
-        !full &&
-        point.distance !== undefined &&
-        Math.floor(point.distance / 1000) > kilometre &&
-        data.points.length < 512
-      ) {
-        kilometre = Math.floor(point.distance / 1000);
+  for await (const batch of mapPositionBatches(document, job, dates)) {
+    for (const { message, route: nextRoute, point } of batch) {
+      if (!point) continue;
+      if (message === 20) {
+        if (route !== nextRoute) {
+          await finish();
+          kilometre = 0;
+        }
+        route = nextRoute!;
+        track.add(point);
+        if (
+          !full &&
+          point.distance !== undefined &&
+          Math.floor(point.distance / 1000) > kilometre &&
+          data.points.length < 512
+        ) {
+          kilometre = Math.floor(point.distance / 1000);
+          data.points.push({
+            ...point,
+            kind: "distance",
+            name: `${kilometre} km`,
+            route: data.tracks.length,
+          });
+        }
+      } else {
         data.points.push({
           ...point,
-          kind: "distance",
-          name: `${kilometre} km`,
-          route: data.tracks.length,
+          kind: message === 19 ? "lap" : "waypoint",
         });
       }
-    } else {
-      data.points.push({ ...point, kind: message === 19 ? "lap" : "waypoint" });
     }
   }
   await finish();
@@ -669,11 +784,22 @@ export async function mapData(
   }
   for (const point of data.points) {
     if (point.route !== undefined) continue;
-    const route = data.tracks.findIndex(
-      (segment) =>
-        point.record >= segment[0].record &&
-        point.record <= segment.at(-1)!.record,
-    );
+    const subfile = document.index.records[point.record].subfile;
+    const route = data.tracks.findIndex((segment) => {
+      const start = segment[0];
+      const end = segment.at(-1)!;
+      if (document.index.records[start.record].subfile !== subfile)
+        return false;
+      if (point.kind === "lap")
+        return (
+          point.time !== undefined &&
+          start.time !== undefined &&
+          end.time !== undefined &&
+          point.time >= start.time &&
+          point.time <= end.time
+        );
+      return point.record >= start.record && point.record <= end.record;
+    });
     if (route >= 0) point.route = route;
   }
   return data;

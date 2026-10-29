@@ -1,10 +1,15 @@
 import { build } from "esbuild";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { valid } from "semver";
+import { buildVersion } from "./build-version.ts";
 
 const metadata = JSON.parse(await readFile("package.json", "utf8"));
-const version = process.env.RELEASE_VERSION || metadata.version;
-if (valid(version) !== version)
+const version = buildVersion({
+  cwd: process.cwd(),
+  packageVersion: metadata.version,
+  releaseVersion: process.env.RELEASE_VERSION,
+});
+if (!valid(version) || !/^\d+\.\d+\.\d+(?:[-+].*)?$/.test(version))
   throw new Error(`Invalid desktop version: ${version}`);
 await rm("desktop", { recursive: true, force: true });
 await mkdir("desktop", { recursive: true });

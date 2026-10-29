@@ -1,4 +1,5 @@
-import type { ChartData, ChartPoint, Sensor } from "../model";
+import type { ChartData, ChartDisplay, ChartPoint, Sensor } from "../model";
+import { chartDisplayKey } from "../document/chart-display";
 import { chartLines, type ChartGroup, type ChartTrace } from "./chart-groups";
 
 export interface PreparedPlot {
@@ -16,6 +17,7 @@ export class ChartPlotCache {
     groups: ChartGroup[],
     series: ChartData["series"],
     color: (sensor: Sensor) => string,
+    display: Record<string, ChartDisplay> = {},
   ): PreparedPlot[] {
     const next = new Map<string, PreparedPlot>();
     for (const group of groups) {
@@ -37,13 +39,23 @@ export class ChartPlotCache {
         points: series[member.key] ?? EMPTY_POINTS,
         color: color({ ...member, key: group.sensor.key }),
       }));
-      const lines = chartLines(traces);
+      const prepared =
+        display[chartDisplayKey(group.members.map((member) => member.key))];
+      const lines = prepared
+        ? prepared.lines.map((line) => ({
+            sensor: line.sensor,
+            points: line.points,
+            color: traces.find((trace) => trace.sensor.key === line.members[0])!
+              .color,
+          }))
+        : chartLines(traces);
       const points =
-        lines.length > 1
+        prepared?.points ??
+        (lines.length > 1
           ? lines
               .flatMap((trace) => trace.points)
               .sort((a, b) => a.time - b.time)
-          : (lines[0]?.points ?? EMPTY_POINTS);
+          : (lines[0]?.points ?? EMPTY_POINTS));
       if (points.length)
         next.set(group.sensor.key, {
           sensor: group.sensor,

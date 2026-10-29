@@ -6,6 +6,7 @@ import type {
   Job,
   RecordRef,
   Sensor,
+  TimeRange,
   WireField,
 } from "../model";
 import { readValue, valid, WIDTHS } from "../protocol/binary";
@@ -74,6 +75,54 @@ interface Packet {
   times: (number | undefined)[];
   axes: (number | null)[][];
   subfile: number;
+  skipped?: boolean;
+}
+interface PacketBlock {
+  from: number;
+  to: number;
+  min: number;
+  max: number;
+}
+const packetIndexes = new WeakMap<FitDocument, Map<number[], PacketBlock[]>>();
+function packetSpans(
+  document: FitDocument,
+  ids: number[],
+  range?: Pick<ChartQuery, "start" | "end" | "dates">,
+): [number, number][] {
+  const blocks = packetIndexes.get(document)?.get(ids);
+  if (
+    !blocks ||
+    !range ||
+    (range.start === undefined &&
+      range.end === undefined &&
+      !hasTimeRange(range.dates))
+  )
+    return [[0, ids.length]];
+  const spans: [number, number][] = [];
+  for (const block of blocks) {
+    const min = Math.max(
+      block.min,
+      range.start ?? -Infinity,
+      range.dates?.start ?? -Infinity,
+    );
+    const max = Math.min(
+      block.max,
+      range.end ?? Infinity,
+      range.dates?.end ?? Infinity,
+    );
+    if (
+      min > max ||
+      (range.dates?.intervals &&
+        !range.dates.intervals.some(
+          (interval) => interval.start <= max && interval.end >= min,
+        ))
+    )
+      continue;
+    const previous = spans.at(-1);
+    if (previous?.[1] === block.from) previous[1] = block.to;
+    else spans.push([block.from, block.to]);
+  }
+  return spans;
 }
 function* packets(
   document: FitDocument,
@@ -81,47 +130,74 @@ function* packets(
   fields: FieldInfo[],
   developer: boolean,
   source?: number,
-  range?: ChartQuery,
+  range?: Pick<ChartQuery, "start" | "end" | "dates">,
 ): Generator<Packet> {
-  for (const id of document.recordIds(message, source)) {
-    const record = document.index.records[id];
-    const locations = layout(record);
-    const ms = values(document, record, locations.get(0))[0];
-    const offsets = values(document, record, locations.get(1));
-    const count = Math.max(
-      offsets.length,
-      ...fields.map((field) => sampleCount(locations.get(field.id)?.wire)),
-    );
-    const anchored =
-      record.timestamp !== undefined && ms !== null && ms !== undefined;
-    const times = Array.from({ length: count }, (_, i) =>
-      anchored && typeof offsets[i] === "number"
-        ? record.timestamp! + (ms! + offsets[i]!) / 1000
-        : undefined,
-    );
-    const visible =
-      !range ||
-      times.some(
-        (time) =>
-          time !== undefined &&
-          (range.start === undefined || time >= range.start) &&
-          (range.end === undefined || time <= range.end) &&
-          inTimeRange(time, range.dates),
+  const ids = document.recordIds(message, source);
+  const buildIndex = !packetIndexes.get(document)?.has(ids);
+  const blocks: PacketBlock[] = [];
+  for (const [from, to] of packetSpans(document, ids, range)) {
+    if (from > 0) yield { times: [], axes: [], subfile: -1, skipped: true };
+    for (let index = from; index < to; index++) {
+      const id = ids[index];
+      const record = document.index.records[id];
+      const locations = layout(record);
+      const ms = values(document, record, locations.get(0))[0];
+      const offsets = values(document, record, locations.get(1));
+      const count = Math.max(
+        offsets.length,
+        ...fields.map((field) => sampleCount(locations.get(field.id)?.wire)),
       );
-    yield {
-      times,
-      axes: visible
-        ? fields.map((field) =>
-            values(
-              document,
-              record,
-              locations.get(field.id),
-              developer ? undefined : field,
-            ),
-          )
-        : [],
-      subfile: record.subfile,
-    };
+      const anchored =
+        record.timestamp !== undefined && ms !== null && ms !== undefined;
+      const times = Array.from({ length: count }, (_, i) =>
+        anchored && typeof offsets[i] === "number"
+          ? record.timestamp! + (ms! + offsets[i]!) / 1000
+          : undefined,
+      );
+      if (buildIndex) {
+        if (index % 256 === 0)
+          blocks.push({
+            from: index,
+            to: Math.min(index + 256, ids.length),
+            min: Infinity,
+            max: -Infinity,
+          });
+        const block = blocks.at(-1)!;
+        for (const time of times)
+          if (time !== undefined) {
+            block.min = Math.min(block.min, time);
+            block.max = Math.max(block.max, time);
+          }
+      }
+      const visible =
+        !range ||
+        times.some(
+          (time) =>
+            time !== undefined &&
+            (range.start === undefined || time >= range.start) &&
+            (range.end === undefined || time <= range.end) &&
+            inTimeRange(time, range.dates),
+        );
+      yield {
+        times,
+        axes: visible
+          ? fields.map((field) =>
+              values(
+                document,
+                record,
+                locations.get(field.id),
+                developer ? undefined : field,
+              ),
+            )
+          : [],
+        subfile: record.subfile,
+      };
+    }
+  }
+  if (buildIndex) {
+    let entries = packetIndexes.get(document);
+    if (!entries) packetIndexes.set(document, (entries = new Map()));
+    entries.set(ids, blocks);
   }
 }
 class Timeline {
@@ -173,6 +249,7 @@ export async function motionStatistics(
     developer,
     first.source,
   )) {
+    if (packet.skipped) continue;
     for (let axis = 0; axis < fields.length; axis++)
       for (let i = 0; i < packet.axes[axis].length; i++)
         if (packet.times[i] !== undefined)
@@ -191,6 +268,7 @@ export async function* motionPoints(
   sensor: Sensor,
   developer: boolean,
   job: Job,
+  range?: TimeRange,
 ): AsyncGenerator<ChartPoint> {
   const [keyMessage, keyField] = sensor.key.split(":");
   const message = sensor.message ?? Number(keyMessage);
@@ -207,11 +285,16 @@ export async function* motionPoints(
     [info],
     developer,
     sensor.source,
+    range ? { dates: range } : undefined,
   )) {
+    if (packet.skipped) timeline.next(undefined, -1);
     for (let i = 0; i < packet.times.length; i++) {
       const time = packet.times[i];
+      if (time === undefined || !inTimeRange(time, range)) {
+        timeline.next(undefined, packet.subfile);
+        continue;
+      }
       const gap = timeline.next(time, packet.subfile);
-      if (time === undefined) continue;
       if (gap) yield { time, value: null };
       yield { time, value: packet.axes[0][i] ?? null };
     }
@@ -363,37 +446,43 @@ export async function motionChart(
     );
     const ids = document.recordIds(message, source);
     let count = 0;
-    for (let i = 0; i < ids.length; i++) {
-      const record = document.index.records[ids[i]];
-      const locations = layout(record);
-      if (
-        query.start !== undefined ||
-        query.end !== undefined ||
-        hasTimeRange(query.dates)
-      ) {
-        const ms = values(document, record, locations.get(0))[0];
-        if (record.timestamp !== undefined && ms !== null && ms !== undefined) {
-          const visible = values(document, record, locations.get(1)).filter(
-            (offset) => {
-              if (offset === null) return false;
-              const time = record.timestamp! + (ms + offset) / 1000;
-              return (
-                (query.start === undefined || time >= query.start) &&
-                (query.end === undefined || time <= query.end) &&
-                inTimeRange(time, query.dates)
-              );
-            },
-          ).length;
-          if (visible) count += visible + 1;
+    for (const [from, to] of packetSpans(document, ids, query)) {
+      for (let i = from; i < to; i++) {
+        const record = document.index.records[ids[i]];
+        const locations = layout(record);
+        if (
+          query.start !== undefined ||
+          query.end !== undefined ||
+          hasTimeRange(query.dates)
+        ) {
+          const ms = values(document, record, locations.get(0))[0];
+          if (
+            record.timestamp !== undefined &&
+            ms !== null &&
+            ms !== undefined
+          ) {
+            const visible = values(document, record, locations.get(1)).filter(
+              (offset) => {
+                if (offset === null) return false;
+                const time = record.timestamp! + (ms + offset) / 1000;
+                return (
+                  (query.start === undefined || time >= query.start) &&
+                  (query.end === undefined || time <= query.end) &&
+                  inTimeRange(time, query.dates)
+                );
+              },
+            ).length;
+            if (visible) count += visible + 1;
+          }
+        } else {
+          const samples = [
+            locations.get(1)?.wire,
+            ...fields.map((field) => locations.get(field.id)?.wire),
+          ].map(sampleCount);
+          count += Math.max(...samples) + 1;
         }
-      } else {
-        const samples = [
-          locations.get(1)?.wire,
-          ...fields.map((field) => locations.get(field.id)?.wire),
-        ].map(sampleCount);
-        count += Math.max(...samples) + 1;
+        if (i % 1024 === 0) await job.yield();
       }
-      if (i % 1024 === 0) await job.yield();
     }
     const family = `${message}:${Math.floor((fields[0].id - 2) / 3)}`;
     plans.push({ chosen, message, source, fields, ids, count, family });
@@ -434,6 +523,10 @@ export async function motionChart(
       source,
       query,
     )) {
+      if (packet.skipped) {
+        excluded = true;
+        continue;
+      }
       for (let sample = 0; sample < packet.times.length; sample++) {
         const time = packet.times[sample];
         if (time !== undefined)

@@ -12,6 +12,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { FileAccess } from "./file-access";
+import { attachDownloads } from "./downloads";
 import {
   APP_URL,
   appNavigation,
@@ -88,6 +89,7 @@ export async function createWindow(
     },
   });
   configure?.(window);
+  attachDownloads(window);
   let discardClose = false;
   window.webContents.on("will-prevent-unload", (event) => {
     if (discardClose) event.preventDefault();

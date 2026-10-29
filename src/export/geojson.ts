@@ -1,15 +1,18 @@
 import type { ExportResult, Job, TimeRange } from "../model";
 import type { FitDocument } from "../document/document";
 import { mapPositions } from "../document/series";
-import { FIT_EPOCH } from "../protocol/time";
+import { timestampIso } from "../protocol/time";
+import { ExportOutput } from "./output";
+import { exportBase } from "./filename";
 
 export async function exportGeoJson(
   document: FitDocument,
   job: Job,
   dates?: TimeRange,
+  parts = new ExportOutput(),
 ): Promise<ExportResult> {
   const encoder = new TextEncoder();
-  const parts: BlobPart[] = ['{"type":"FeatureCollection","features":['];
+  parts.push('{"type":"FeatureCollection","features":[');
   let batch: string[] = [];
   let first = true;
   const flush = () => {
@@ -49,10 +52,7 @@ export async function exportGeoJson(
           message_id: entry.message,
           subfile: entry.subfile + 1,
           route_id: entry.message === 20 ? entry.route! + 1 : null,
-          timestamp:
-            point.time === undefined
-              ? null
-              : new Date(FIT_EPOCH + point.time * 1000).toISOString(),
+          timestamp: point.time === undefined ? null : timestampIso(point.time),
           // FIT does not establish an ellipsoidal height datum for GeoJSON Z.
           elevation_m: point.elevation ?? null,
           distance_m: point.distance ?? null,
@@ -74,7 +74,7 @@ export async function exportGeoJson(
   );
   await job.yield();
   return {
-    blob: new Blob(parts, { type: "application/geo+json" }),
-    filename: `${document.filename.replace(/\.[^.]+$/, "")}-gps.geojson`,
+    blob: await parts.finish("application/geo+json"),
+    filename: `${exportBase(document.filename)}-gps.geojson`,
   };
 }

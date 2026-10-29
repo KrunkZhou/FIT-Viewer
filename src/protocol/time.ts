@@ -1,6 +1,11 @@
 export const FIT_EPOCH = 631065600000;
 export const HOUR_CYCLE = "h23" as const;
 
+export function timestampIso(time: number): string | null {
+  const date = new Date(FIT_EPOCH + time * 1000);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
 export function formatTimestamp(time: number, locale?: string): string {
   return new Date(FIT_EPOCH + time * 1000).toLocaleString(locale, {
     hourCycle: HOUR_CYCLE,

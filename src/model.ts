@@ -170,6 +170,7 @@ export interface Sensor {
   pointCount?: number;
 }
 export interface ChartPoint {
+  sourceName?: string;
   time: number;
   value: number | null;
 }
@@ -190,10 +191,17 @@ export interface TimeRange {
   intervals?: { start: number; end: number }[];
 }
 export interface ChartData {
+  display?: ChartDisplay[];
   sensors: Sensor[];
   series: Record<string, ChartPoint[]>;
   start: number;
   end: number;
+}
+
+export interface ChartDisplay {
+  members: string[];
+  lines: { sensor: Sensor; members: string[]; points: ChartPoint[] }[];
+  points: ChartPoint[];
 }
 export interface Position {
   lat: number;
@@ -238,6 +246,7 @@ export interface ExportQuery {
 }
 export interface ExportResult {
   blob: Blob;
+  streamed?: boolean;
   filename: string;
   partial?: boolean;
   generated?: string[];
@@ -258,7 +267,7 @@ export type RequestPayload = (
   | { kind: "map"; dates?: TimeRange }
   | { kind: "map-position"; mapId: number; time: number; routes: number[] }
   | { kind: "diagnostics"; page: number; size: number }
-  | { kind: "export"; query: ExportQuery }
+  | { kind: "export"; query: ExportQuery; stream?: WritableStream<Uint8Array> }
   | { kind: "cancel"; target: number }
   | { kind: "dispose" }
 ) & { source?: number };

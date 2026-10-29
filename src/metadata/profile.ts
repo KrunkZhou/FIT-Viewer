@@ -19,7 +19,8 @@ import {
   valid,
 } from "../protocol/binary";
 
-import { FIT_EPOCH } from "../protocol/time";
+import { timestampIso } from "../protocol/time";
+import { activeField } from "./official";
 export const words = (value: string): string =>
   value
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
@@ -287,17 +288,18 @@ export class Metadata {
       })
     )
       return extension.name;
-    const match = this.index.records.find(
-      (r) =>
-        r.definition.message === message &&
+    const settings = watch.messages[message];
+    if (!settings) return `Message ${message}`;
+    const match = this.index.messages.get(message)?.some((id) => {
+      const r = this.index.records[id];
+      return (
         this.index.subfiles[r.subfile].manufacturer ===
           watch.deviceModel.manufacturer &&
         this.index.subfiles[r.subfile].product === watch.deviceModel.product &&
-        r.definition.fields.some((f) => this.watchField(r, f, this.raw(r))),
-    );
-    return match && watch.messages[message]
-      ? words(watch.messages[message].messageName)
-      : `Message ${message}`;
+        r.definition.fields.some((f) => this.watchField(r, f, this.raw(r)))
+      );
+    });
+    return match ? words(settings.messageName) : `Message ${message}`;
   }
   private garminField(record: RecordRef, wire: WireField) {
     if (
@@ -371,15 +373,7 @@ export class Metadata {
       watch.messages[record.definition.message]?.fields[wire.id];
     const extra =
       watchInfo ?? (guardedWatchField ? undefined : (variant ?? supplemental));
-    const active = official?.subFields.find((sub) =>
-      sub.map.some((condition) => {
-        const controller = Object.values(profile.fields).find(
-          (f) => f.name === condition.name,
-        );
-        return controller && raw[String(controller.num)] === condition.value;
-      }),
-    );
-    const definition = active ?? official;
+    const definition = activeField(record.definition.message, wire.id, raw);
     const type =
       definition?.type ?? extra?.type ?? TYPE_NAMES[wire.type] ?? "byte";
     const cacheKey = `${key}:${definition?.name}:${extra?.fieldName}`;
@@ -441,7 +435,8 @@ export class Metadata {
           : fixedBigInt(value, info.scale ?? 1, info.offset ?? 0);
       if (value === null) return null;
       if (info.type === "dateTime" || info.type === "localDateTime") {
-        const text = new Date(FIT_EPOCH + value * 1000).toISOString();
+        const text = timestampIso(value);
+        if (text === null) return null;
         // FIT local_date_time is a wall-clock value, not a UTC instant.
         return info.type === "localDateTime" ? text.slice(0, -1) : text;
       }
