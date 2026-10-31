@@ -22,12 +22,14 @@ import type {
   MapPlaybackPosition,
   ExportQuery,
   Position,
+  RecordTarget,
   TimeRange,
 } from "../model";
 import { DateRangeFilter } from "./DateRangeFilter";
 import type { DocumentClient } from "../document/client";
 import {
   IconButton,
+  GoToDataButton,
   LoadingIndicator,
   Toggle,
   readPreference,
@@ -97,7 +99,7 @@ export default function ActivityMap({
   dates: TimeRange;
   onDatesChange: (dates: TimeRange) => void;
   availableDates?: string[];
-  onGoToData: (record: number) => void;
+  onGoToData: (target: RecordTarget) => void;
 }) {
   const [data, setData] = useState<MapData>();
   const loadedQuery = useRef<
@@ -490,6 +492,10 @@ export default function ActivityMap({
                   {selected.distance !== undefined && (
                     <div>{(selected.distance / 1000).toFixed(2)} km</div>
                   )}
+                  <GoToDataButton
+                    target={{ message: 20, record: selected.record }}
+                    onGoToData={onGoToData}
+                  />
                 </Popup>
               )}
               {data.points.map(
@@ -534,6 +540,13 @@ export default function ActivityMap({
                         {point.time !== undefined && (
                           <div>{formatTimestamp(point.time)}</div>
                         )}
+                        <GoToDataButton
+                          target={{
+                            message: point.message ?? 20,
+                            record: point.record,
+                          }}
+                          onGoToData={onGoToData}
+                        />
                       </Popup>
                     </CircleMarker>
                   ),
@@ -593,7 +606,7 @@ export default function ActivityMap({
               color={currentRouteColor}
               error={playbackError}
               onTimeChange={setTime}
-              onGoToData={onGoToData}
+              onGoToData={(record) => onGoToData({ message: 20, record })}
               canGoToData={
                 positionQuery?.time === cursorTime &&
                 positionQuery?.range === timeRange

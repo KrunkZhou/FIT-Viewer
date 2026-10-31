@@ -146,7 +146,7 @@ test("chart buckets preserve extrema and missing-data gaps with zero bounds", as
     width: 100,
     developer: false,
   });
-  assert.deepEqual(data.series["20:3"], [{ time: 0, value: 123 }]);
+  assert.deepEqual(data.series["20:3"], [{ time: 0, value: 123, record: 0 }]);
 });
 test("interpolation handles empty, singleton, and duplicate-time samples", () => {
   assert.equal(interpolate([], 0), null);

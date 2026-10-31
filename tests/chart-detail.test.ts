@@ -248,6 +248,7 @@ test("chart detail is a compact named icon dropdown with high as the default", (
       active: true,
       dates: {},
       onDatesChange: () => {},
+      onGoToData: () => {},
       download: () => {},
     }),
   );

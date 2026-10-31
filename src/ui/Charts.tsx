@@ -33,6 +33,7 @@ import type {
   ChartPoint,
   ExportQuery,
   Sensor,
+  RecordTarget,
   TimeRange,
 } from "../model";
 import { DateRangeFilter } from "./DateRangeFilter";
@@ -60,7 +61,6 @@ import {
   chartTimeDomain,
   chartTimeTicks,
   chartTimeline,
-  chartTimeLabel,
   dayPeriodRange,
   dividerDate,
   type ChartTimeDomain,
@@ -69,6 +69,15 @@ import {
 import { ChartPeriodLegend, ChartTraceLegend } from "./ChartLegend";
 import { ChartHoverStore } from "./chart-hover";
 import { ChartHoverCursor } from "./ChartHoverCursor";
+import {
+  ChartActivePoint,
+  ChartPointMenu,
+  ChartPointTooltip,
+  ChartTooltipGeometry,
+  chartPointAt,
+  type ChartPointMenuState,
+} from "./ChartPointDetails";
+import { ChartLineCoverage } from "./chart-tooltip-layout";
 import {
   ChartDetailButton,
   ReferenceValuesButton,
@@ -105,6 +114,7 @@ const Plot = memo(function Plot({
   width,
   timeScale,
   hoverStore,
+  onGoToData,
 }: {
   sensor: Sensor;
   points: ChartPoint[];
@@ -116,6 +126,7 @@ const Plot = memo(function Plot({
   active: boolean;
   width: number;
   hoverStore: ChartHoverStore;
+  onGoToData: (target: RecordTarget) => void;
   timeScale?: {
     domain: ChartTimeDomain;
     ticks: number[];
@@ -125,6 +136,10 @@ const Plot = memo(function Plot({
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   const [drag, setDrag] = useState<[number, number]>();
+  const [menu, setMenu] = useState<ChartPointMenuState>();
+  const [lineCoverage] = useState(() => new ChartLineCoverage());
+  const contextPoint = useRef<ChartPointMenuState | undefined>(undefined);
+  useEffect(() => setMenu(undefined), [active, points]);
   useEffect(() => validationChartRender(sensor.key));
   const timeline = useMemo(
     () => timeScale?.timeline ?? chartTimeline(points, sensor.axis),
@@ -146,10 +161,42 @@ const Plot = memo(function Plot({
       </h3>
       <ChartTraceLegend traces={traces} />
       {timeline.periods.length > 0 && <ChartPeriodLegend />}
-      <div className="viewer-chart-canvas" ref={ref}>
+      <div
+        className="viewer-chart-canvas"
+        ref={ref}
+        onPointerDownCapture={(event) => {
+          // Chart focus can move the active dot before contextmenu is delivered.
+          contextPoint.current =
+            event.button === 2
+              ? chartPointAt(event.currentTarget, event.clientX, event.clientY)
+              : undefined;
+        }}
+        onContextMenu={(event) => {
+          const point =
+            contextPoint.current ??
+            chartPointAt(event.currentTarget, event.clientX, event.clientY);
+          contextPoint.current = undefined;
+          if (!point) return;
+          event.preventDefault();
+          setDrag(undefined);
+          setMenu(point);
+        }}
+        onKeyDown={(event) => {
+          if (
+            event.key !== "ContextMenu" &&
+            !(event.shiftKey && event.key === "F10")
+          )
+            return;
+          const point = chartPointAt(event.currentTarget);
+          if (!point) return;
+          event.preventDefault();
+          setMenu(point);
+        }}
+      >
         {visible && active && (
           <ResponsiveContainer>
             <LineChart
+              accessibilityLayer
               data={points}
               margin={{
                 top: timeline.midnights.length
@@ -161,7 +208,9 @@ const Plot = memo(function Plot({
                 bottom: 5,
                 left: 5,
               }}
-              onMouseDown={(event) => {
+              onMouseDown={(event, mouse) => {
+                if ((mouse.button !== undefined && mouse.button !== 0) || menu)
+                  return;
                 const label = event?.activeLabel;
                 if (label !== undefined && Number.isFinite(Number(label)))
                   setDrag([Number(label), Number(label)]);
@@ -269,21 +318,17 @@ const Plot = memo(function Plot({
               />
               <Tooltip
                 cursor={!timeScale}
-                contentStyle={{
-                  background: "var(--viewer-popup)",
-                  borderColor: "var(--viewer-border)",
-                }}
-                labelFormatter={(value) =>
-                  sensor.axis === "sample"
-                    ? `Sample ${value}`
-                    : chartTimeLabel(Number(value))
-                }
-                formatter={(value, name, item) => [
-                  value,
-                  item.payload?.sourceName
-                    ? `${name} · ${item.payload.sourceName}`
-                    : name,
-                ]}
+                active={menu ? false : undefined}
+                isAnimationActive={false}
+                wrapperStyle={{ pointerEvents: "none" }}
+                content={(props) => (
+                  <ChartPointTooltip
+                    {...props}
+                    container={ref.current}
+                    coverage={lineCoverage}
+                    axis={sensor.axis}
+                  />
+                )}
               />
               {timeline.midnights.map((time, index) => (
                 <ReferenceLine
@@ -331,10 +376,14 @@ const Plot = memo(function Plot({
                   stroke={trace.color}
                   strokeWidth={1.5}
                   dot={false}
+                  activeDot={<ChartActivePoint sensor={trace.sensor} />}
                   connectNulls
                   isAnimationActive={false}
                 />
               ))}
+              <Customized
+                component={<ChartTooltipGeometry coverage={lineCoverage} />}
+              />
               {references.map((value, i) => (
                 <ReferenceLine
                   key={`reference-${i}`}
@@ -366,6 +415,16 @@ const Plot = memo(function Plot({
           </ResponsiveContainer>
         )}
       </div>
+      <ChartPointMenu
+        menu={menu}
+        close={() => setMenu(undefined)}
+        onGoToData={onGoToData}
+        restoreFocus={() =>
+          ref.current
+            ?.querySelector<SVGSVGElement>('[tabindex="0"]')
+            ?.focus({ preventScroll: true })
+        }
+      />
     </section>
   );
 });
@@ -377,6 +436,7 @@ export default function Charts({
   dates,
   onDatesChange,
   availableDates,
+  onGoToData,
 }: {
   client: DocumentClient;
   developer: boolean;
@@ -385,6 +445,7 @@ export default function Charts({
   dates: TimeRange;
   onDatesChange: (dates: TimeRange) => void;
   availableDates?: string[];
+  onGoToData: (target: RecordTarget) => void;
 }) {
   const [inventory, setInventory] = useState<{
     developer: boolean;
@@ -815,6 +876,7 @@ export default function Charts({
                   color={sensorColor(sensor)}
                   references={references}
                   onZoom={zoom}
+                  onGoToData={onGoToData}
                   key={sensor.key}
                 />
               );

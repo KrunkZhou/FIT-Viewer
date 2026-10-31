@@ -50,7 +50,7 @@ export function Messages({
       : (summary.messages.find((m) => m.known && m.count > 1)?.id ?? -1),
   );
   const [search, setSearch] = useState("");
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const [query, setQuery] = useState<TableQuery>({
     message: selected,
     developer,

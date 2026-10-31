@@ -131,7 +131,7 @@ export async function ordinaryChart(
               (query.filter?.max === undefined || value <= query.filter.max)
                 ? value
                 : null;
-            state.sampler.add({ time, value: numeric });
+            state.sampler.add({ time, value: numeric, record: ids[i] });
             state.emitted = true;
             state.start = Math.min(state.start, time);
             state.end = Math.max(state.end, time);

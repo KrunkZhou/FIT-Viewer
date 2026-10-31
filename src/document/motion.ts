@@ -72,6 +72,7 @@ function values(
   return samples as (number | null)[];
 }
 interface Packet {
+  record?: number;
   times: (number | undefined)[];
   axes: (number | null)[][];
   subfile: number;
@@ -179,6 +180,7 @@ function* packets(
             inTimeRange(time, range.dates),
         );
       yield {
+        record: id,
         times,
         axes: visible
           ? fields.map((field) =>
@@ -305,6 +307,7 @@ export async function* motionPoints(
   }
 }
 interface MotionPoint {
+  record?: number;
   time: number;
   values: (number | null)[];
   index: number;
@@ -317,6 +320,7 @@ class Envelope {
   private index = 0;
   private currentIndex = 0;
   private time = 0;
+  private record?: number;
   private current?: MotionSample;
   private gapPoint?: MotionPoint;
   private first?: MotionSample;
@@ -334,10 +338,16 @@ class Envelope {
     this.gaps = Array(axes);
     this.values = Array(axes);
   }
-  add(time: number, axes?: (number | null)[][], sample = 0): void {
+  add(
+    time: number,
+    axes?: (number | null)[][],
+    sample = 0,
+    record?: number,
+  ): void {
     if (this.index && this.index % this.size === 0) this.flush();
     this.currentIndex = this.index;
     this.time = time;
+    this.record = record;
     this.current = undefined;
     this.gapPoint = undefined;
     let missing = false;
@@ -353,7 +363,12 @@ class Envelope {
       missing ||= value === null;
     }
     if (missing) {
-      this.gapPoint = { time, index: this.index, values: [...this.values] };
+      this.gapPoint = {
+        time,
+        record,
+        index: this.index,
+        values: [...this.values],
+      };
       for (let axis = 0; axis < this.axes; axis++)
         if (this.values[axis] === null) this.gaps[axis] = this.gapPoint;
     }
@@ -372,6 +387,7 @@ class Envelope {
     return (this.current ??= {
       ...(this.gapPoint ?? {
         time: this.time,
+        record: this.record,
         index: this.currentIndex,
         values: [...this.values],
       }),
@@ -547,7 +563,7 @@ export async function motionChart(
         if (gap || excluded) {
           envelope.add(time);
         }
-        envelope.add(time, packet.axes, sample);
+        envelope.add(time, packet.axes, sample, packet.record);
         excluded = false;
       }
       if (++index % 64 === 0) {
@@ -566,6 +582,7 @@ export async function motionChart(
       series[sensor.key] = retained.map((sample) => ({
         time: sample.time,
         value: sample.values[axis] ?? null,
+        ...(sample.record !== undefined ? { record: sample.record } : {}),
       }));
     });
   }

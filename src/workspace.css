@@ -153,7 +153,15 @@ body { margin: 0; overflow: hidden; }
 .viewer-chart-toolbar > h2 { margin-right: auto; }
 .viewer-sensor-plot { padding: 16px 0 12px; border-bottom: 1px solid var(--viewer-border); }
 .viewer-sensor-plot h3 { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 14px; font-weight: 600; margin-bottom: 8px; }
-.viewer-chart-canvas { height: 260px; width: 100%; min-width: 0; font-size: 12px; }
+.viewer-chart-canvas { position: relative; height: 260px; width: 100%; min-width: 0; font-size: 12px; }
+.viewer-chart-tooltip { position: absolute; top: 0; left: 0; z-index: 10; visibility: hidden; width: max-content; max-width: min(440px, calc(100% - 16px)); max-height: calc(100% - 16px); overflow: auto; pointer-events: none; border: 1px solid var(--viewer-border); border-radius: 6px; background: var(--viewer-popup); box-shadow: var(--viewer-shadow); }
+.viewer-chart-readout-content { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; overflow-wrap: anywhere; }
+.viewer-chart-readout-content > strong { flex-basis: 100%; color: var(--viewer-foreground); font-weight: 600; }
+.viewer-chart-readout-content b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.viewer-chart-point-menu { z-index: 1000; max-width: calc(100vw - 16px); padding: 4px; border: 1px solid var(--viewer-border); border-radius: 6px; background: var(--viewer-popup); color: var(--viewer-foreground); box-shadow: var(--viewer-shadow); }
+.viewer-chart-point-menu .viewer-command { border: 0; background: transparent; width: 100%; justify-content: start; }
+.viewer-chart-point-menu .viewer-command:hover, .viewer-chart-point-menu .viewer-command:focus-visible { background: var(--viewer-accent-soft); color: var(--viewer-accent); }
+.leaflet-popup-content .viewer-go-to-data { margin-top: 8px; font-size: 12px; padding: 5px 8px; }
 .viewer-csv-dialog { width: 540px; max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); padding: 20px; overflow-y: auto; }
 .viewer-csv-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-top: 16px; }
 .viewer-diagnostics { display: flex; flex-direction: column; gap: 20px; }

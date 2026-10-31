@@ -771,6 +771,7 @@ export async function mapData(
       } else {
         data.points.push({
           ...point,
+          message,
           kind: message === 19 ? "lap" : "waypoint",
         });
       }

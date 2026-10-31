@@ -170,6 +170,7 @@ export interface Sensor {
   pointCount?: number;
 }
 export interface ChartPoint {
+  record?: number;
   sourceName?: string;
   time: number;
   value: number | null;
@@ -212,9 +213,14 @@ export interface Position {
   record: number;
 }
 export interface MapPoint extends Position {
+  message?: number;
   name?: string;
   route?: number;
   kind: "waypoint" | "lap" | "distance" | "start" | "finish";
+}
+export interface RecordTarget {
+  message: number;
+  record: number;
 }
 export interface MapData {
   tracks: Position[][];

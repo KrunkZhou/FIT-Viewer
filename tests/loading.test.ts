@@ -26,6 +26,7 @@ test("charts show an initial spinner instead of a premature empty state", () => 
     createElement(Charts, {
       dates: {},
       onDatesChange() {},
+      onGoToData() {},
       client: new DocumentClient(),
       developer: false,
       download() {},
@@ -55,6 +56,7 @@ test("a saved off preference still overrides the default-on Sync time setting", 
       createElement(Charts, {
         dates: {},
         onDatesChange() {},
+        onGoToData() {},
         client: new DocumentClient(),
         developer: false,
         download() {},

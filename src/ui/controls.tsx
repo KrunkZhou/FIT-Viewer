@@ -5,7 +5,8 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { LoaderCircle, X } from "lucide-react";
+import { LoaderCircle, Table2, X } from "lucide-react";
+import type { RecordTarget } from "../model";
 import * as Switch from "@radix-ui/react-switch";
 import { ControlTooltip } from "./ControlTooltip";
 
@@ -14,6 +15,27 @@ export function LoadingIndicator({ label }: { label: string }) {
     <div className="viewer-loading-indicator" role="status" aria-label={label}>
       <LoaderCircle className="spin" size={28} aria-hidden="true" />
     </div>
+  );
+}
+
+export function GoToDataButton({
+  target,
+  onGoToData,
+  role,
+}: {
+  target: RecordTarget;
+  onGoToData: (target: RecordTarget) => void;
+  role?: "menuitem";
+}) {
+  return (
+    <button
+      type="button"
+      role={role}
+      className="viewer-command viewer-go-to-data"
+      onClick={() => onGoToData(target)}
+    >
+      <Table2 size={15} aria-hidden="true" /> Go to data
+    </button>
   );
 }
 

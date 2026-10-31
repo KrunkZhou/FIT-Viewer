@@ -12,6 +12,19 @@ import { idleJob } from "../src/protocol/reader";
 import type { ChartData, ChartQuery } from "../src/model";
 import { activity, file, type Field } from "./fixtures";
 
+// Display results additionally retain record IDs; exported values stay unchanged.
+function withoutRecordIds(data: ChartData): ChartData {
+  return {
+    ...data,
+    series: Object.fromEntries(
+      Object.entries(data.series).map(([key, points]) => [
+        key,
+        points.map(({ record: _record, ...point }) => point),
+      ]),
+    ),
+  };
+}
+
 test("invalid native components never become enhanced speed or elevation", async () => {
   for (const little of [true, false]) {
     const document = await FitDocument.open(
@@ -97,7 +110,7 @@ test("cold ordinary chart groups read each record once and preserve full-resolut
     NumericReader.prototype.read = read;
   }
   const reference = await chart(document, query, idleJob(), true);
-  assert.deepEqual(result, reference);
+  assert.deepEqual(withoutRecordIds(result), reference);
 });
 
 test("batched charts preserve arrays, invalid slots, raw values, gaps and filtering", async () => {
@@ -137,7 +150,7 @@ test("batched charts preserve arrays, invalid slots, raw values, gaps and filter
     };
     const actual = await chart(document, query);
     const expected = await chart(document, query, idleJob(), true);
-    assert.deepEqual(actual, expected);
+    assert.deepEqual(withoutRecordIds(actual), expected);
   }
 });
 

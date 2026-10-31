@@ -139,6 +139,7 @@ test("zoomed charts avoid decoding offscreen records and retain out-of-order tim
         return time >= 100 && time <= 110;
       })
       .map((id) => ({
+        record: id,
         time: document.index.records[id].timestamp!,
         value: document.cells(id)["3"].value,
       }));

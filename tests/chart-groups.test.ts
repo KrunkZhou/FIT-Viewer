@@ -334,6 +334,7 @@ test("charts expose a named, default-on XYZ toggle without changing sensor selec
     createElement(Charts, {
       dates: {},
       onDatesChange() {},
+      onGoToData() {},
       client: new DocumentClient(),
       developer: false,
       active: true,

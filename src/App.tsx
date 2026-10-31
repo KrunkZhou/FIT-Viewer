@@ -2,6 +2,7 @@ import {
   Fragment,
   lazy,
   Suspense,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -38,7 +39,12 @@ import {
   saveDestination,
   type SaveDestination,
 } from "./ui/save-destination";
-import type { DocumentSummary, ExportQuery, TimeRange } from "./model";
+import type {
+  DocumentSummary,
+  ExportQuery,
+  RecordTarget,
+  TimeRange,
+} from "./model";
 import { ControlTooltip } from "./ui/ControlTooltip";
 import { Overview } from "./ui/Overview";
 import { CiqSettings } from "./ui/CiqSettings";
@@ -138,6 +144,10 @@ export default function App() {
   const [csvFormat, setCsvFormat] = useState<"iso" | "localized">("iso");
   const [remember, setRemember] = useState(false);
   const [target, setTarget] = useState<{ message: number; record: number }>();
+  const goToData = useCallback((target: RecordTarget) => {
+    setTarget(target);
+    setTab("messages");
+  }, []);
   const fileInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
   const downloads = useRef(new Downloads());
@@ -413,10 +423,7 @@ export default function App() {
             download={download}
             dates={dates}
             onDatesChange={setDates}
-            onGoToData={(record) => {
-              setTarget({ message: 20, record });
-              setTab("messages");
-            }}
+            onGoToData={goToData}
           />
         </div>
       )}
@@ -428,6 +435,7 @@ export default function App() {
             developer={developer}
             download={download}
             active={tab === "chart"}
+            onGoToData={goToData}
             dates={dates}
             onDatesChange={setDates}
           />
